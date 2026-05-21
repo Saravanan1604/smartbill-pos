@@ -17,7 +17,7 @@ import { renderSettings, initSettings } from './pages/settings.js';
 // Base API configuration - change this URL to your production Render URL after deploying the backend
 window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:5000'
-  : 'https://smartbill-backend.onrender.com'; // <-- REPLACE with your actual Render service URL
+  : 'https://smartbill-backend-al6t.onrender.com';
 
 const ROUTES = {
   '#login':     { render: renderLogin,     init: initLogin,     title: 'Login',     public: true },
