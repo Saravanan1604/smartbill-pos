@@ -219,6 +219,88 @@ async function updateTotals() {
 let selectedCustomerId = null;
 let selectedCustomerName = null;
 
+function renderBNFList(products) {
+  if (!products.length) return `<p style="color:var(--text-muted);text-align:center;padding:16px;font-size:.85rem;">No products match</p>`;
+  return products.slice(0, 8).map(p => `
+    <div class="cart-item" style="cursor:pointer;" onclick="window._bnfAddToCart('${p.id}')">
+      <div style="flex:1;">
+        <div class="cart-item-name">${p.name}</div>
+        <div class="cart-item-price">${formatCurrency(p.price)} · ${p.stock > 0 ? `${p.stock} in stock` : '❌ Out of stock'}</div>
+      </div>
+      <span class="badge badge-violet" style="cursor:pointer;">+ Add</span>
+    </div>
+  `).join('');
+}
+
+async function showBarcodeNotFoundModal(barcode) {
+  const products = await DB.getProducts();
+
+  createModal({
+    id: 'barcode-not-found',
+    title: '🔍 Barcode Not Recognized',
+    body: `
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div style="background:var(--danger-glow);border:1px solid rgba(239,68,68,.15);border-radius:var(--radius-md);padding:10px 14px;">
+          <p style="font-size:.8rem;color:var(--danger);">No product matched barcode: <strong style="font-family:'JetBrains Mono',monospace;">${barcode}</strong></p>
+        </div>
+
+        <!-- Search and add -->
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">Search product to add to cart</label>
+          <div class="search-bar">
+            <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" class="form-input" id="bnf-search" placeholder="Type product name..." style="padding-left:38px;" autofocus>
+          </div>
+        </div>
+        <div id="bnf-results" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;">
+          ${renderBNFList(products)}
+        </div>
+
+        <div class="divider" style="margin:4px 0;"></div>
+
+        <!-- Assign barcode -->
+        <div>
+          <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;">💡 Assign this barcode to a product so it works next time:</p>
+          <div style="display:flex;gap:8px;">
+            <select class="form-select" id="bnf-assign-select" style="flex:1;">
+              <option value="">— select product —</option>
+              ${products.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary btn-sm" id="bnf-assign-btn">Assign</button>
+          </div>
+        </div>
+      </div>
+    `
+  });
+
+  setTimeout(() => {
+    // Live search filter
+    document.getElementById('bnf-search')?.addEventListener('input', e => {
+      const q = e.target.value.toLowerCase();
+      const filtered = products.filter(p =>
+        p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q))
+      );
+      document.getElementById('bnf-results').innerHTML = renderBNFList(filtered);
+    });
+
+    // Assign barcode to product
+    document.getElementById('bnf-assign-btn')?.addEventListener('click', async () => {
+      const id = document.getElementById('bnf-assign-select')?.value;
+      if (!id) { toast.warning('Select a product first'); return; }
+      const product = products.find(p => p.id === id);
+      await DB.updateProduct(id, { barcode });
+      toast.success(`Barcode assigned to "${product?.name}" — scan will work next time!`);
+      closeModal('barcode-not-found');
+    });
+
+    // Add to cart from search results
+    window._bnfAddToCart = async (productId) => {
+      closeModal('barcode-not-found');
+      await addToCart(productId);
+    };
+  }, 100);
+}
+
 async function resumeHeldBill() {
   const heldBill = JSON.parse(localStorage.getItem('smartbill_held_bill') || 'null');
   if (!heldBill) return;
@@ -284,8 +366,12 @@ export async function initBilling() {
   document.getElementById('scan-btn')?.addEventListener('click', () => {
     openScanner(async barcode => {
       const p = await DB.getProductByBarcode(barcode);
-      if (p) { await addToCart(p.id); toast.success(`✅ ${p.name} added to cart`); }
-      else toast.error(`❌ No product found for barcode: ${barcode}`);
+      if (p) {
+        await addToCart(p.id);
+        toast.success(`✅ ${p.name} added to cart`);
+      } else {
+        await showBarcodeNotFoundModal(barcode);
+      }
     });
   });
 

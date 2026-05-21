@@ -3,6 +3,7 @@ import DB from '../db.js';
 import { formatCurrency, formatDate } from '../utils/format.js';
 import { createModal, closeModal, confirmDialog } from '../components/modal.js';
 import toast from '../components/toast.js';
+import { openScanner } from '../components/scanner.js';
 
 const CATEGORIES = ['Grocery','Dairy','Bakery','Beverages','Snacks','Personal Care','Household','Stationery','Electronics','Clothing','Other'];
 const TAX_RATES = [0, 5, 12, 18, 28];
@@ -171,7 +172,13 @@ function showProductModal(product, onSave) {
         </div>
         <div class="form-group">
           <label class="form-label">Barcode / QR Code</label>
-          <input type="text" class="form-input" id="pf-barcode" value="${isEdit ? product.barcode || '' : ''}" placeholder="e.g. 10001">
+          <div class="input-group">
+            <input type="text" class="form-input" id="pf-barcode" value="${isEdit ? product.barcode || '' : ''}" placeholder="e.g. 8901063045149 — or scan below">
+            <button class="btn btn-secondary" id="pf-scan-barcode-btn" type="button" title="Scan physical barcode to fill this field" style="padding:10px 14px;gap:6px;">
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
+              Scan
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
@@ -210,6 +217,18 @@ function showProductModal(product, onSave) {
   });
 
   setTimeout(() => {
+    // Scan-to-fill barcode field
+    document.getElementById('pf-scan-barcode-btn')?.addEventListener('click', () => {
+      openScanner(code => {
+        const input = document.getElementById('pf-barcode');
+        if (input) {
+          input.value = code;
+          input.focus();
+          toast.success(`Barcode scanned: ${code}`);
+        }
+      });
+    });
+
     document.getElementById('save-product-btn')?.addEventListener('click', async () => {
       const name = document.getElementById('pf-name')?.value?.trim();
       const price = parseFloat(document.getElementById('pf-price')?.value || 0);
