@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SmartBill POS — Smart Billing, Inventory & Sales Management for small businesses. QR scan, PDF invoices, GST support.">
+  <meta name="theme-color" content="#080810">
+  <title>SmartBill POS — Smart Billing & Inventory</title>
+
+  <!-- Immediate Theme & Language check to prevent flash -->
+  <script>
+    (function() {
+      const theme = localStorage.getItem('smartbill_theme') || 'dark';
+      document.documentElement.setAttribute('theme', theme);
+      const lang = localStorage.getItem('smartbill_lang') || 'en';
+      document.documentElement.lang = lang === 'ta' ? 'ta' : 'en';
+    })();
+  </script>
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+
+  <!-- Local Libraries (Offline Support) -->
+  <!-- Chart.js -->
+  <script src="js/lib/chart.umd.min.js"></script>
+  <!-- jsPDF -->
+  <script src="js/lib/jspdf.umd.min.js"></script>
+  <!-- html5-qrcode -->
+  <script src="js/lib/html5-qrcode.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="js/lib/lucide.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div class="loading-screen" id="loading-screen">
+    <div class="loading-logo">SmartBill</div>
+    <div class="loading-spinner"></div>
+    <p style="color:var(--text-muted);font-size:.875rem;">Loading your store...</p>
+  </div>
+
+  <!-- App Root -->
+  <div id="app"></div>
+
+  <!-- Bootstrap App -->
+  <script type="module">
+    import { init } from './js/app.js';
+    // Small delay to show loading screen
+    setTimeout(init, 800);
+  </script>
+
+</body>
+</html>
