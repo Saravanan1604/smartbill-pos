@@ -15,6 +15,7 @@ let selectedCategory = 'All';
 export async function renderBilling() {
   const products = await DB.getProducts();
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
+  const heldBill = JSON.parse(localStorage.getItem('smartbill_held_bill') || 'null');
 
   return `
     <div class="page-container" style="padding-bottom:0;">
@@ -23,8 +24,9 @@ export async function renderBilling() {
           <h1>Billing / POS</h1>
           <p>Scan products or search to add to cart</p>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" id="hold-btn">⏸ Hold</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          ${heldBill ? `<button class="btn btn-amber btn-sm" id="resume-btn" title="Resume held bill (${heldBill.cart?.length || 0} items from ${heldBill.savedAt || 'earlier'})">▶ Resume${heldBill.cart?.length ? ` (${heldBill.cart.length})` : ''}</button>` : ''}
+          <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill">⏸ Hold</button>
           <button class="btn btn-secondary btn-sm" id="clear-cart-btn">🗑 Clear</button>
         </div>
       </div>
@@ -38,10 +40,10 @@ export async function renderBilling() {
           <div class="billing-search-bar">
             <div class="search-bar" style="flex:1;">
               <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <input type="text" class="form-input" id="product-search" placeholder="Search products by name or barcode..." style="padding-left:38px;">
+              <input type="text" class="form-input" id="product-search" placeholder="Search products by name or barcode... (press / to focus)" style="padding-left:38px;">
             </div>
             <button class="scanner-trigger" id="scan-btn">
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
               Scan QR
             </button>
           </div>
@@ -92,11 +94,14 @@ export async function renderBilling() {
             <!-- Discount -->
             <div class="discount-row">
               <span class="cart-summary-label" style="flex-shrink:0;">Discount</span>
-              <input type="number" class="form-input" id="discount-input" min="0" placeholder="₹0" style="max-width:90px;padding:6px 10px;font-size:.8rem;">
-              <select class="form-select" id="discount-type" style="max-width:80px;padding:6px 10px;font-size:.8rem;">
+              <input type="number" class="form-input" id="discount-input" min="0" placeholder="0" style="max-width:80px;padding:6px 10px;font-size:.8rem;">
+              <select class="form-select" id="discount-type" style="max-width:70px;padding:6px 10px;font-size:.8rem;">
                 <option value="flat">₹</option>
                 <option value="pct">%</option>
               </select>
+              <button class="btn btn-ghost btn-icon-sm" id="clear-discount-btn" title="Remove discount" style="flex-shrink:0;">
+                <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
             </div>
             <div class="cart-summary-row" id="tax-row" style="display:none;">
               <span class="cart-summary-label">Tax (GST)</span>
@@ -117,9 +122,10 @@ export async function renderBilling() {
             </div>
             <!-- Actions -->
             <div class="cart-actions" style="margin-top:8px;">
-              <button class="btn btn-success btn-lg" id="checkout-btn" disabled style="width:100%;">
+              <button class="btn btn-success btn-lg" id="checkout-btn" disabled style="width:100%;" title="Checkout (F9)">
                 <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Checkout & Generate Bill
+                <span style="opacity:.6;font-size:.7rem;font-weight:400;font-family:'JetBrains Mono',monospace;">[F9]</span>
               </button>
             </div>
           </div>
@@ -138,16 +144,19 @@ function renderProductGrid(products, query, category) {
 
   if (filtered.length === 0) return `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">📦</div><h3>No products found</h3><p>Try a different search or category</p></div>`;
 
-  return filtered.map(p => `
-    <div class="product-tile ${p.stock === 0 ? 'out-of-stock' : ''}" data-id="${p.id}" onclick="${p.stock === 0 ? 'return' : `window.addToCart('${p.id}')`}">
+  return filtered.map(p => {
+    const cartItem = cart.find(i => i.id === p.id);
+    return `
+    <div class="product-tile ${p.stock === 0 ? 'out-of-stock' : ''} ${cartItem ? 'in-cart' : ''}" data-id="${p.id}" onclick="${p.stock === 0 ? 'return' : `window.addToCart('${p.id}')`}">
       <span class="product-tile-cat">${p.category || ''}</span>
+      ${cartItem ? `<span class="product-cart-badge">×${cartItem.qty}</span>` : ''}
       <div class="product-tile-name">${p.name}</div>
       <div class="product-tile-price">${formatCurrency(p.price)}</div>
       <div class="product-tile-stock" style="color:${p.stock === 0 ? 'var(--danger)' : p.stock <= (p.alertThreshold||10) ? 'var(--warning)' : 'var(--text-muted)'};">
         ${p.stock === 0 ? '❌ Out of stock' : `📦 ${p.stock} left`}
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderCartItems() {
@@ -210,6 +219,41 @@ async function updateTotals() {
 let selectedCustomerId = null;
 let selectedCustomerName = null;
 
+async function resumeHeldBill() {
+  const heldBill = JSON.parse(localStorage.getItem('smartbill_held_bill') || 'null');
+  if (!heldBill) return;
+  cart = heldBill.cart || [];
+  paymentMethod = heldBill.paymentMethod || 'Cash';
+  selectedCustomerId = heldBill.selectedCustomerId || null;
+  selectedCustomerName = heldBill.selectedCustomerName || null;
+  localStorage.removeItem('smartbill_held_bill');
+
+  const discInput = document.getElementById('discount-input');
+  const discType = document.getElementById('discount-type');
+  if (discInput) discInput.value = heldBill.discountVal || '';
+  if (discType) discType.value = heldBill.discountType || 'flat';
+
+  document.querySelectorAll('.payment-method-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.pay === paymentMethod);
+  });
+
+  if (selectedCustomerName) {
+    const bar = document.getElementById('customer-bar');
+    const label = document.getElementById('customer-label');
+    if (bar) bar.style.display = '';
+    if (label) label.textContent = '👤 ' + selectedCustomerName;
+  }
+
+  renderCartItems();
+  await updateTotals();
+  const products = await DB.getProducts();
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
+  toast.success(`Held bill restored — ${cart.length} item${cart.length !== 1 ? 's' : ''} back in cart`);
+
+  const resumeBtn = document.getElementById('resume-btn');
+  if (resumeBtn) resumeBtn.remove();
+}
+
 export async function initBilling() {
   cart = [];
   discount = 0;
@@ -263,11 +307,54 @@ export async function initBilling() {
     cart = [];
     renderCartItems();
     await updateTotals();
+    const products = await DB.getProducts();
+    document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   });
 
-  // Hold
-  document.getElementById('hold-btn')?.addEventListener('click', () => {
-    toast.info('Bill held. You can resume anytime.');
+  // Hold Bill — save to localStorage so it can be resumed
+  document.getElementById('hold-btn')?.addEventListener('click', async () => {
+    if (cart.length === 0) { toast.warning('Cart is empty — nothing to hold'); return; }
+    const heldData = {
+      cart: [...cart],
+      discountVal: document.getElementById('discount-input')?.value || '',
+      discountType: document.getElementById('discount-type')?.value || 'flat',
+      paymentMethod,
+      selectedCustomerId,
+      selectedCustomerName,
+      savedAt: new Date().toLocaleTimeString()
+    };
+    localStorage.setItem('smartbill_held_bill', JSON.stringify(heldData));
+    cart = [];
+    selectedCustomerId = null;
+    selectedCustomerName = null;
+    document.getElementById('customer-bar').style.display = 'none';
+    document.getElementById('discount-input').value = '';
+    renderCartItems();
+    await updateTotals();
+    const products = await DB.getProducts();
+    document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
+    toast.success(`Bill held! ${heldData.cart.length} item${heldData.cart.length !== 1 ? 's' : ''} saved — click Resume to restore.`);
+    // Show resume button
+    const holdBtn = document.getElementById('hold-btn');
+    if (holdBtn && !document.getElementById('resume-btn')) {
+      const resumeBtn = document.createElement('button');
+      resumeBtn.className = 'btn btn-amber btn-sm';
+      resumeBtn.id = 'resume-btn';
+      resumeBtn.title = `Resume held bill (${heldData.cart.length} items from ${heldData.savedAt})`;
+      resumeBtn.textContent = `▶ Resume (${heldData.cart.length})`;
+      holdBtn.parentNode.insertBefore(resumeBtn, holdBtn);
+      resumeBtn.addEventListener('click', resumeHeldBill);
+    }
+  });
+
+  // Resume Held Bill
+  document.getElementById('resume-btn')?.addEventListener('click', resumeHeldBill);
+
+  // Clear Discount
+  document.getElementById('clear-discount-btn')?.addEventListener('click', async () => {
+    const discInput = document.getElementById('discount-input');
+    if (discInput) discInput.value = '';
+    await updateTotals();
   });
 
   // Add Customer
@@ -321,6 +408,25 @@ export async function initBilling() {
     showCheckoutModal();
   });
 
+  // Keyboard shortcuts for POS efficiency
+  const billingKeyHandler = (e) => {
+    // Ignore if typing in an input/select
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    if (e.key === '/' || e.key === 'F3') {
+      e.preventDefault();
+      document.getElementById('product-search')?.focus();
+    } else if (e.key === 'F9') {
+      e.preventDefault();
+      if (cart.length > 0) document.getElementById('checkout-btn')?.click();
+    } else if (e.key === 'Escape') {
+      const discInput = document.getElementById('discount-input');
+      if (discInput && discInput.value) { discInput.value = ''; updateTotals(); }
+    }
+  };
+  document.addEventListener('keydown', billingKeyHandler);
+  // Clean up on page leave
+  window._billingKeyHandler = billingKeyHandler;
+
   // Global functions
   window.addToCart = addToCart;
   window.removeFromCart = removeFromCart;
@@ -342,6 +448,8 @@ async function addToCart(productId) {
   }
   renderCartItems();
   await updateTotals();
+  // Refresh product grid to update cart badges
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   toast.success(`${p.name} added ✓`, 1500);
 }
 
@@ -349,6 +457,8 @@ async function removeFromCart(idx) {
   cart.splice(idx, 1);
   renderCartItems();
   await updateTotals();
+  const products = await DB.getProducts();
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
 }
 
 async function cartQty(idx, delta) {
@@ -360,6 +470,7 @@ async function cartQty(idx, delta) {
   if (p && item.qty > p.stock) { item.qty = p.stock; toast.warning(`Max stock: ${p.stock}`); }
   renderCartItems();
   await updateTotals();
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
 }
 
 async function cartSetQty(idx, val) {

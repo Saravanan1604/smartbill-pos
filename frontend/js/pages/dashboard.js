@@ -9,6 +9,8 @@ export async function renderDashboard() {
   const now = new Date();
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
   const change = calcPercChange(stats.todayRevenue, stats.yesterdayRevenue);
+  const txnChange = calcPercChange(stats.todayTxns, stats.yesterdayTxns ?? 0);
+  const profitChange = calcPercChange(stats.todayProfit, stats.yesterdayProfit ?? 0);
 
   const sales = await DB.getSales();
   const recentSales = sales.slice(-6).reverse();
@@ -44,15 +46,15 @@ export async function renderDashboard() {
           </div>
           <div class="kpi-value">${stats.todayTxns}</div>
           <div class="kpi-label">Today's Transactions</div>
-          <div class="kpi-change up">↑ Active today</div>
+          <div class="kpi-change ${txnChange.dir}">${txnChange.dir === 'up' ? '↑' : '↓'} ${txnChange.val}% vs yesterday</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon kpi-icon-green">
             <svg width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
           </div>
-          <div class="kpi-value">${formatCurrency(stats.totalProfit)}</div>
-          <div class="kpi-label">Total Profit</div>
-          <div class="kpi-change up">↑ All time</div>
+          <div class="kpi-value">${formatCurrency(stats.todayProfit ?? stats.totalProfit)}</div>
+          <div class="kpi-label">Today's Profit</div>
+          <div class="kpi-change ${profitChange.dir}">${profitChange.dir === 'up' ? '↑' : '↓'} ${profitChange.val}% vs yesterday</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon kpi-icon-amber">

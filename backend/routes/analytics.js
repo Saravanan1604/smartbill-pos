@@ -22,8 +22,11 @@ router.get('/dashboard', async (req, res) => {
     // Yesterday's Sales
     const yesterdaySales = await Sale.find({ date: yesterdayStr });
     const yesterdayRevenue = yesterdaySales.reduce((sum, sale) => sum + sale.total, 0);
+    const yesterdayTxns = yesterdaySales.length;
+    const yesterdayProfit = yesterdaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
-    // Total Profit (All time)
+    // Today's and All-time Profit
+    const todayProfit = todaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
     const allSales = await Sale.find({}, 'profit');
     const totalProfit = allSales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
@@ -36,6 +39,9 @@ router.get('/dashboard', async (req, res) => {
       todayRevenue: parseFloat(todayRevenue.toFixed(2)),
       yesterdayRevenue: parseFloat(yesterdayRevenue.toFixed(2)),
       todayTxns,
+      yesterdayTxns,
+      todayProfit: parseFloat(todayProfit.toFixed(2)),
+      yesterdayProfit: parseFloat(yesterdayProfit.toFixed(2)),
       totalProfit: parseFloat(totalProfit.toFixed(2)),
       lowStockCount: lowStock.length,
       outOfStockCount: outOfStock.length,

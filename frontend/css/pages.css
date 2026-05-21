@@ -60,6 +60,8 @@
 .product-tile-stock{font-size:.7rem;color:var(--text-muted);position:relative;}
 .product-tile-cat{position:absolute;top:8px;right:8px;font-size:.6rem;padding:2px 6px;border-radius:var(--radius-full);background:var(--glass-active);color:var(--text-muted);}
 .product-tile.out-of-stock{opacity:.5;cursor:not-allowed;}
+.product-tile.in-cart{border-color:rgba(124,58,237,.45);background:var(--gradient-brand-soft);}
+.product-cart-badge{position:absolute;bottom:8px;right:8px;background:var(--accent-violet);color:white;font-size:.65rem;font-weight:800;padding:2px 7px;border-radius:var(--radius-full);font-family:'JetBrains Mono',monospace;line-height:1.4;z-index:1;}
 .cart-header{padding:20px 24px;border-bottom:1px solid var(--glass-border);display:flex;align-items:center;justify-content:space-between;}
 .cart-title{font-size:1rem;font-weight:700;color:var(--text-primary);}
 .cart-count{font-size:.75rem;color:var(--text-muted);}

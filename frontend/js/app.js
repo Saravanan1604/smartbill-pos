@@ -41,6 +41,11 @@ const PAGE_ID_MAP = {
 };
 
 async function navigate(hash) {
+  // Clean up billing keyboard shortcut listener on page change
+  if (window._billingKeyHandler) {
+    document.removeEventListener('keydown', window._billingKeyHandler);
+    window._billingKeyHandler = null;
+  }
   const route = ROUTES[hash] || ROUTES['#dashboard'];
   const app = document.getElementById('app');
   if (!app) return;
