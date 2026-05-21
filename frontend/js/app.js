@@ -14,8 +14,10 @@ import { renderReports,  initReports  } from './pages/reports.js';
 import { renderCustomers, initCustomers } from './pages/customers.js';
 import { renderSettings, initSettings } from './pages/settings.js';
 
-// Base API configuration - change this URL for production deploy
-window.API_BASE_URL = 'http://localhost:5000';
+// Base API configuration - change this URL to your production Render URL after deploying the backend
+window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:5000'
+  : 'https://smartbill-backend.onrender.com'; // <-- REPLACE with your actual Render service URL
 
 const ROUTES = {
   '#login':     { render: renderLogin,     init: initLogin,     title: 'Login',     public: true },
