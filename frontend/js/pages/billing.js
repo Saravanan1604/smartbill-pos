@@ -11,9 +11,27 @@ let discount = 0;
 let paymentMethod = 'Cash';
 let searchQuery = '';
 let selectedCategory = 'All';
+let selectedCustomerId = null;
+let selectedCustomerName = null;
+
+// Page-scoped caches — avoids hammering the API on every cart action.
+// Invalidated on checkout and on page init.
+let _productsCache = null;
+let _settingsCache = null;
+
+async function cachedProducts() {
+  if (!_productsCache) _productsCache = await DB.getProducts();
+  return _productsCache;
+}
+
+async function cachedSettings() {
+  if (!_settingsCache) _settingsCache = await DB.getSettings();
+  return _settingsCache;
+}
 
 export async function renderBilling() {
   const products = await DB.getProducts();
+  _productsCache = products; // seed cache from this fresh fetch
   const categories = ['All', ...new Set(products.map(p => p.category).filter(Boolean))];
   const heldBill = JSON.parse(localStorage.getItem('smartbill_held_bill') || 'null');
 
@@ -26,7 +44,7 @@ export async function renderBilling() {
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           ${heldBill ? `<button class="btn btn-amber btn-sm" id="resume-btn" title="Resume held bill (${heldBill.cart?.length || 0} items from ${heldBill.savedAt || 'earlier'})">▶ Resume${heldBill.cart?.length ? ` (${heldBill.cart.length})` : ''}</button>` : ''}
-          <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill">⏸ Hold</button>
+          <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill (save for later)">⏸ Hold</button>
           <button class="btn btn-secondary btn-sm" id="clear-cart-btn">🗑 Clear</button>
         </div>
       </div>
@@ -40,7 +58,7 @@ export async function renderBilling() {
           <div class="billing-search-bar">
             <div class="search-bar" style="flex:1;">
               <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <input type="text" class="form-input" id="product-search" placeholder="Search products by name or barcode... (press / to focus)" style="padding-left:38px;">
+              <input type="text" class="form-input" id="product-search" placeholder="Search products… (press / to focus)" style="padding-left:38px;">
             </div>
             <button class="scanner-trigger" id="scan-btn">
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
@@ -65,7 +83,7 @@ export async function renderBilling() {
         <div class="billing-right">
           <div class="cart-header">
             <div>
-              <div class="cart-title">🛒 Shopping Cart</div>
+              <div class="cart-title">🛒 Cart</div>
               <div class="cart-count" id="cart-count">0 items</div>
             </div>
             <div style="display:flex;gap:6px;">
@@ -124,7 +142,7 @@ export async function renderBilling() {
             <div class="cart-actions" style="margin-top:8px;">
               <button class="btn btn-success btn-lg" id="checkout-btn" disabled style="width:100%;" title="Checkout (F9)">
                 <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Checkout & Generate Bill
+                Checkout &amp; Generate Bill
                 <span style="opacity:.6;font-size:.7rem;font-weight:400;font-family:'JetBrains Mono',monospace;">[F9]</span>
               </button>
             </div>
@@ -142,17 +160,19 @@ function renderProductGrid(products, query, category) {
     return matchCat && matchQuery;
   });
 
-  if (filtered.length === 0) return `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">📦</div><h3>No products found</h3><p>Try a different search or category</p></div>`;
+  if (filtered.length === 0) {
+    return `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">📦</div><h3>No products found</h3><p>Try a different search or category</p></div>`;
+  }
 
   return filtered.map(p => {
     const cartItem = cart.find(i => i.id === p.id);
     return `
-    <div class="product-tile ${p.stock === 0 ? 'out-of-stock' : ''} ${cartItem ? 'in-cart' : ''}" data-id="${p.id}" onclick="${p.stock === 0 ? 'return' : `window.addToCart('${p.id}')`}">
+    <div class="product-tile ${p.stock === 0 ? 'out-of-stock' : ''} ${cartItem ? 'in-cart' : ''}" data-id="${p.id}" onclick="${p.stock === 0 ? '' : `window.addToCart('${p.id}')`}">
       <span class="product-tile-cat">${p.category || ''}</span>
       ${cartItem ? `<span class="product-cart-badge">×${cartItem.qty}</span>` : ''}
       <div class="product-tile-name">${p.name}</div>
       <div class="product-tile-price">${formatCurrency(p.price)}</div>
-      <div class="product-tile-stock" style="color:${p.stock === 0 ? 'var(--danger)' : p.stock <= (p.alertThreshold||10) ? 'var(--warning)' : 'var(--text-muted)'};">
+      <div class="product-tile-stock" style="color:${p.stock === 0 ? 'var(--danger)' : p.stock <= (p.alertThreshold || 10) ? 'var(--warning)' : 'var(--text-muted)'};">
         ${p.stock === 0 ? '❌ Out of stock' : `📦 ${p.stock} left`}
       </div>
     </div>`;
@@ -161,12 +181,15 @@ function renderProductGrid(products, query, category) {
 
 function renderCartItems() {
   const cartEl = document.getElementById('cart-items');
-  const emptyEl = document.getElementById('cart-empty');
   if (!cartEl) return;
 
   if (cart.length === 0) {
-    if (emptyEl) { emptyEl.style.display = ''; }
-    cartEl.innerHTML = emptyEl ? emptyEl.outerHTML : '<div class="empty-state"><div class="empty-state-icon">🛒</div><h3>Cart is empty</h3></div>';
+    cartEl.innerHTML = `
+      <div class="empty-state" id="cart-empty">
+        <div class="empty-state-icon">🛒</div>
+        <h3>Cart is empty</h3>
+        <p>Click products or scan QR to add items</p>
+      </div>`;
     return;
   }
 
@@ -190,34 +213,34 @@ function renderCartItems() {
 }
 
 async function updateTotals() {
-  const settings = await DB.getSettings();
+  const settings = await cachedSettings();
+  const products = await cachedProducts();
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const discType = document.getElementById('discount-type')?.value || 'flat';
   const discVal = parseFloat(document.getElementById('discount-input')?.value || 0) || 0;
   discount = discType === 'pct' ? subtotal * discVal / 100 : discVal;
 
-  const products = await DB.getProducts();
-  const taxItems = cart.map(item => {
-    const p = products.find(x => x.id === item.id);
-    const taxRate = (settings.gstEnabled && p?.tax) ? p.tax : 0;
-    return (item.price * item.qty * taxRate) / 100;
-  });
-  const tax = settings.gstEnabled ? taxItems.reduce((a, b) => a + b, 0) : 0;
+  const tax = settings.gstEnabled ? cart.reduce((s, i) => {
+    const p = products.find(x => x.id === i.id);
+    return s + (p?.tax ? (i.price * i.qty * p.tax) / 100 : 0);
+  }, 0) : 0;
+
   const total = subtotal - discount + tax;
 
-  document.getElementById('subtotal-val') && (document.getElementById('subtotal-val').textContent = formatCurrency(subtotal));
-  document.getElementById('total-val') && (document.getElementById('total-val').textContent = formatCurrency(Math.max(0, total)));
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('subtotal-val', formatCurrency(subtotal));
+  set('total-val', formatCurrency(Math.max(0, total)));
+  set('tax-val', formatCurrency(tax));
+
   const cartCount = document.getElementById('cart-count');
   if (cartCount) cartCount.textContent = `${cart.reduce((s, i) => s + i.qty, 0)} items`;
+
   const taxRow = document.getElementById('tax-row');
-  if (taxRow) { taxRow.style.display = settings.gstEnabled ? '' : 'none'; }
-  document.getElementById('tax-val') && (document.getElementById('tax-val').textContent = formatCurrency(tax));
+  if (taxRow) taxRow.style.display = settings.gstEnabled ? '' : 'none';
+
   const checkoutBtn = document.getElementById('checkout-btn');
   if (checkoutBtn) checkoutBtn.disabled = cart.length === 0;
 }
-
-let selectedCustomerId = null;
-let selectedCustomerName = null;
 
 function renderBNFList(products) {
   if (!products.length) return `<p style="color:var(--text-muted);text-align:center;padding:16px;font-size:.85rem;">No products match</p>`;
@@ -233,7 +256,7 @@ function renderBNFList(products) {
 }
 
 async function showBarcodeNotFoundModal(barcode) {
-  const products = await DB.getProducts();
+  const products = await cachedProducts();
 
   createModal({
     id: 'barcode-not-found',
@@ -244,12 +267,11 @@ async function showBarcodeNotFoundModal(barcode) {
           <p style="font-size:.8rem;color:var(--danger);">No product matched barcode: <strong style="font-family:'JetBrains Mono',monospace;">${barcode}</strong></p>
         </div>
 
-        <!-- Search and add -->
         <div class="form-group" style="margin:0;">
           <label class="form-label">Search product to add to cart</label>
           <div class="search-bar">
             <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" class="form-input" id="bnf-search" placeholder="Type product name..." style="padding-left:38px;" autofocus>
+            <input type="text" class="form-input" id="bnf-search" placeholder="Type product name…" style="padding-left:38px;" autofocus>
           </div>
         </div>
         <div id="bnf-results" style="display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;">
@@ -258,7 +280,6 @@ async function showBarcodeNotFoundModal(barcode) {
 
         <div class="divider" style="margin:4px 0;"></div>
 
-        <!-- Assign barcode -->
         <div>
           <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px;">💡 Assign this barcode to a product so it works next time:</p>
           <div style="display:flex;gap:8px;">
@@ -274,7 +295,6 @@ async function showBarcodeNotFoundModal(barcode) {
   });
 
   setTimeout(() => {
-    // Live search filter
     document.getElementById('bnf-search')?.addEventListener('input', e => {
       const q = e.target.value.toLowerCase();
       const filtered = products.filter(p =>
@@ -283,17 +303,16 @@ async function showBarcodeNotFoundModal(barcode) {
       document.getElementById('bnf-results').innerHTML = renderBNFList(filtered);
     });
 
-    // Assign barcode to product
     document.getElementById('bnf-assign-btn')?.addEventListener('click', async () => {
       const id = document.getElementById('bnf-assign-select')?.value;
       if (!id) { toast.warning('Select a product first'); return; }
       const product = products.find(p => p.id === id);
       await DB.updateProduct(id, { barcode });
+      _productsCache = null; // product changed, bust cache
       toast.success(`Barcode assigned to "${product?.name}" — scan will work next time!`);
       closeModal('barcode-not-found');
     });
 
-    // Add to cart from search results
     window._bnfAddToCart = async (productId) => {
       closeModal('barcode-not-found');
       await addToCart(productId);
@@ -328,7 +347,7 @@ async function resumeHeldBill() {
 
   renderCartItems();
   await updateTotals();
-  const products = await DB.getProducts();
+  const products = await cachedProducts();
   document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   toast.success(`Held bill restored — ${cart.length} item${cart.length !== 1 ? 's' : ''} back in cart`);
 
@@ -337,16 +356,19 @@ async function resumeHeldBill() {
 }
 
 export async function initBilling() {
+  // Reset state and caches on page init
   cart = [];
   discount = 0;
   paymentMethod = 'Cash';
   selectedCustomerId = null;
   selectedCustomerName = null;
+  _settingsCache = null;
+  // _productsCache seeded in renderBilling(); keep it to avoid refetch
 
   // Product search
   document.getElementById('product-search')?.addEventListener('input', async e => {
     searchQuery = e.target.value;
-    const products = await DB.getProducts();
+    const products = await cachedProducts();
     document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   });
 
@@ -358,7 +380,7 @@ export async function initBilling() {
     document.querySelectorAll('#category-filters [data-cat]').forEach(b => {
       b.className = `btn btn-sm ${b.dataset.cat === selectedCategory ? 'btn-primary' : 'btn-secondary'}`;
     });
-    const products = await DB.getProducts();
+    const products = await cachedProducts();
     document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   });
 
@@ -388,16 +410,24 @@ export async function initBilling() {
   document.getElementById('discount-input')?.addEventListener('input', updateTotals);
   document.getElementById('discount-type')?.addEventListener('change', updateTotals);
 
+  // Clear Discount
+  document.getElementById('clear-discount-btn')?.addEventListener('click', async () => {
+    const discInput = document.getElementById('discount-input');
+    if (discInput) discInput.value = '';
+    await updateTotals();
+  });
+
   // Clear Cart
   document.getElementById('clear-cart-btn')?.addEventListener('click', async () => {
+    if (cart.length === 0) return;
     cart = [];
     renderCartItems();
     await updateTotals();
-    const products = await DB.getProducts();
+    const products = await cachedProducts();
     document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   });
 
-  // Hold Bill — save to localStorage so it can be resumed
+  // Hold Bill
   document.getElementById('hold-btn')?.addEventListener('click', async () => {
     if (cart.length === 0) { toast.warning('Cart is empty — nothing to hold'); return; }
     const heldData = {
@@ -413,14 +443,16 @@ export async function initBilling() {
     cart = [];
     selectedCustomerId = null;
     selectedCustomerName = null;
-    document.getElementById('customer-bar').style.display = 'none';
-    document.getElementById('discount-input').value = '';
+    const custBar = document.getElementById('customer-bar');
+    const discInp = document.getElementById('discount-input');
+    if (custBar) custBar.style.display = 'none';
+    if (discInp) discInp.value = '';
     renderCartItems();
     await updateTotals();
-    const products = await DB.getProducts();
+    const products = await cachedProducts();
     document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
     toast.success(`Bill held! ${heldData.cart.length} item${heldData.cart.length !== 1 ? 's' : ''} saved — click Resume to restore.`);
-    // Show resume button
+
     const holdBtn = document.getElementById('hold-btn');
     if (holdBtn && !document.getElementById('resume-btn')) {
       const resumeBtn = document.createElement('button');
@@ -436,16 +468,20 @@ export async function initBilling() {
   // Resume Held Bill
   document.getElementById('resume-btn')?.addEventListener('click', resumeHeldBill);
 
-  // Clear Discount
-  document.getElementById('clear-discount-btn')?.addEventListener('click', async () => {
-    const discInput = document.getElementById('discount-input');
-    if (discInput) discInput.value = '';
-    await updateTotals();
-  });
-
   // Add Customer
   document.getElementById('add-customer-btn')?.addEventListener('click', async () => {
     const customers = await DB.getCustomers();
+
+    const renderCustomerList = (list) => list.map(c => `
+      <div class="cart-item" style="cursor:pointer;" onclick="window.selectCustomer('${c.id}', '${c.name.replace(/'/g, "\\'")}')">
+        <div class="sidebar-avatar" style="width:36px;height:36px;font-size:.8rem;">${c.name.slice(0, 2).toUpperCase()}</div>
+        <div class="cart-item-info">
+          <div class="cart-item-name">${c.name}</div>
+          <div class="cart-item-price">${c.phone || 'No phone'}</div>
+        </div>
+      </div>
+    `).join('') || '<p style="color:var(--text-muted);text-align:center;padding:20px;">No customers found</p>';
+
     createModal({
       id: 'pick-customer',
       title: 'Select Customer',
@@ -453,22 +489,25 @@ export async function initBilling() {
         <div class="form-group mb-4">
           <div class="search-bar">
             <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" class="form-input" id="cust-search" placeholder="Search customers..." style="padding-left:38px;">
+            <input type="text" class="form-input" id="cust-modal-search" placeholder="Search customers…" style="padding-left:38px;" autofocus>
           </div>
         </div>
         <div id="cust-list" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;">
-          ${customers.map(c => `
-            <div class="cart-item" style="cursor:pointer;" onclick="window.selectCustomer('${c.id}', '${c.name.replace(/'/g,"\\'")}')">
-              <div class="sidebar-avatar" style="width:36px;height:36px;font-size:.8rem;">${c.name.slice(0,2).toUpperCase()}</div>
-              <div class="cart-item-info">
-                <div class="cart-item-name">${c.name}</div>
-                <div class="cart-item-price">${c.phone}</div>
-              </div>
-            </div>
-          `).join('') || '<p style="color:var(--text-muted);text-align:center;padding:20px;">No customers found</p>'}
+          ${renderCustomerList(customers)}
         </div>
       `
     });
+
+    // Live customer search inside modal
+    setTimeout(() => {
+      document.getElementById('cust-modal-search')?.addEventListener('input', e => {
+        const q = e.target.value.toLowerCase();
+        const filtered = customers.filter(c =>
+          c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q))
+        );
+        document.getElementById('cust-list').innerHTML = renderCustomerList(filtered);
+      });
+    }, 100);
   });
 
   window.selectCustomer = (id, name) => {
@@ -485,7 +524,8 @@ export async function initBilling() {
   document.getElementById('remove-customer-btn')?.addEventListener('click', () => {
     selectedCustomerId = null;
     selectedCustomerName = null;
-    document.getElementById('customer-bar').style.display = 'none';
+    const bar = document.getElementById('customer-bar');
+    if (bar) bar.style.display = 'none';
   });
 
   // Checkout
@@ -494,9 +534,8 @@ export async function initBilling() {
     showCheckoutModal();
   });
 
-  // Keyboard shortcuts for POS efficiency
+  // Keyboard shortcuts
   const billingKeyHandler = (e) => {
-    // Ignore if typing in an input/select
     if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
     if (e.key === '/' || e.key === 'F3') {
       e.preventDefault();
@@ -510,10 +549,9 @@ export async function initBilling() {
     }
   };
   document.addEventListener('keydown', billingKeyHandler);
-  // Clean up on page leave
   window._billingKeyHandler = billingKeyHandler;
 
-  // Global functions
+  // Register cart globals
   window.addToCart = addToCart;
   window.removeFromCart = removeFromCart;
   window.cartQty = cartQty;
@@ -521,7 +559,7 @@ export async function initBilling() {
 }
 
 async function addToCart(productId) {
-  const products = await DB.getProducts();
+  const products = await cachedProducts();
   const p = products.find(x => x.id === productId);
   if (!p) return;
   if (p.stock === 0) { toast.warning(`${p.name} is out of stock`); return; }
@@ -534,7 +572,6 @@ async function addToCart(productId) {
   }
   renderCartItems();
   await updateTotals();
-  // Refresh product grid to update cart badges
   document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   toast.success(`${p.name} added ✓`, 1500);
 }
@@ -543,14 +580,14 @@ async function removeFromCart(idx) {
   cart.splice(idx, 1);
   renderCartItems();
   await updateTotals();
-  const products = await DB.getProducts();
+  const products = await cachedProducts();
   document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
 }
 
 async function cartQty(idx, delta) {
   const item = cart[idx];
   if (!item) return;
-  const products = await DB.getProducts();
+  const products = await cachedProducts();
   const p = products.find(x => x.id === item.id);
   item.qty = Math.max(1, item.qty + delta);
   if (p && item.qty > p.stock) { item.qty = p.stock; toast.warning(`Max stock: ${p.stock}`); }
@@ -562,44 +599,48 @@ async function cartQty(idx, delta) {
 async function cartSetQty(idx, val) {
   const item = cart[idx];
   if (!item) return;
-  item.qty = Math.max(1, parseInt(val) || 1);
+  const products = await cachedProducts();
+  const p = products.find(x => x.id === item.id);
+  const maxQty = p ? p.stock : 9999;
+  item.qty = Math.max(1, Math.min(parseInt(val) || 1, maxQty));
+  if (p && parseInt(val) > p.stock) toast.warning(`Max stock: ${p.stock}`);
   renderCartItems();
   await updateTotals();
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
 }
 
 async function getCartTotals() {
-  const settings = await DB.getSettings();
+  const settings = await cachedSettings();
+  const products = await cachedProducts();
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const discType = document.getElementById('discount-type')?.value || 'flat';
   const discVal = parseFloat(document.getElementById('discount-input')?.value || 0) || 0;
   const disc = discType === 'pct' ? subtotal * discVal / 100 : discVal;
-  const products = await DB.getProducts();
   const tax = settings.gstEnabled ? cart.reduce((s, i) => {
     const p = products.find(x => x.id === i.id);
     return s + (p?.tax ? (i.price * i.qty * p.tax) / 100 : 0);
   }, 0) : 0;
   const total = subtotal - disc + tax;
-  return { subtotal, discount: disc, tax, total: Math.max(0, total) };
+  return { subtotal, discount: disc, tax, total: Math.max(0, total), products, settings };
 }
 
 async function showCheckoutModal() {
   const { subtotal, discount: disc, tax, total } = await getCartTotals();
-  const settings = await DB.getSettings();
   createModal({
     id: 'checkout',
     title: '🧾 Confirm & Generate Bill',
-    size: '',
     body: `
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div class="card-p" style="background:var(--bg-elevated);border-radius:var(--radius-md);">
           ${cart.map(i => `
             <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--glass-border);">
-              <span style="font-size:.85rem;color:var(--text-secondary);">${i.name} x${i.qty}</span>
+              <span style="font-size:.85rem;color:var(--text-secondary);">${i.name} ×${i.qty}</span>
               <span style="font-size:.85rem;font-weight:600;font-family:'JetBrains Mono',monospace;">${formatCurrency(i.price * i.qty)}</span>
             </div>
           `).join('')}
           <div style="display:flex;justify-content:space-between;padding:8px 0 4px;border-top:1px solid var(--glass-border);margin-top:4px;">
-            <span style="font-size:.8rem;color:var(--text-muted);">Subtotal</span><span style="font-size:.8rem;">${formatCurrency(subtotal)}</span>
+            <span style="font-size:.8rem;color:var(--text-muted);">Subtotal</span>
+            <span style="font-size:.8rem;">${formatCurrency(subtotal)}</span>
           </div>
           ${disc > 0 ? `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="font-size:.8rem;color:var(--success);">Discount</span><span style="font-size:.8rem;color:var(--success);">-${formatCurrency(disc)}</span></div>` : ''}
           ${tax > 0 ? `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="font-size:.8rem;color:var(--text-muted);">GST</span><span style="font-size:.8rem;">${formatCurrency(tax)}</span></div>` : ''}
@@ -616,7 +657,7 @@ async function showCheckoutModal() {
       <button class="btn btn-secondary" onclick="window._closeModal('checkout')">Cancel</button>
       <button class="btn btn-primary" id="confirm-checkout-btn">
         <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        Confirm & Bill
+        Confirm &amp; Bill
       </button>
     `
   });
@@ -629,9 +670,14 @@ async function showCheckoutModal() {
 }
 
 async function completeSale(subtotal, disc, tax, total) {
-  const settings = await DB.getSettings();
+  const settings = await cachedSettings();
+  // Compute fresh totals at confirm time (in case discount changed)
   const { subtotal: s, discount: d, tax: t, total: tot } = await getCartTotals();
-  const products = await DB.getProducts();
+
+  // Bust products cache before fetching for cost calc — stock will update on backend
+  _productsCache = null;
+  const products = await cachedProducts();
+
   const costTotal = cart.reduce((sum, item) => {
     const p = products.find(x => x.id === item.id);
     return sum + (p ? (p.costPrice || p.price * 0.75) * item.qty : 0);
@@ -654,19 +700,23 @@ async function completeSale(subtotal, disc, tax, total) {
   closeModal('checkout');
   toast.success(`✅ Bill ${sale.invoiceNo} created!`);
 
-  // Show invoice options
+  // Show invoice options before resetting cart
   await showInvoiceOptions(sale);
 
-  // Reset
+  // Reset state
   cart = [];
   selectedCustomerId = null;
   selectedCustomerName = null;
-  document.getElementById('customer-bar').style.display = 'none';
-  document.getElementById('discount-input').value = '';
+  const custBar = document.getElementById('customer-bar');
+  const discInp = document.getElementById('discount-input');
+  if (custBar) custBar.style.display = 'none';
+  if (discInp) discInp.value = '';
   renderCartItems();
+
+  // Fetch fresh product data (stock was decremented on server)
+  _productsCache = null;
+  const updatedProducts = await cachedProducts();
   await updateTotals();
-  // Refresh product grid (stock updated)
-  const updatedProducts = await DB.getProducts();
   document.getElementById('product-grid').innerHTML = renderProductGrid(updatedProducts, searchQuery, selectedCategory);
 }
 

@@ -12,6 +12,12 @@ export async function renderDashboard() {
   const txnChange = calcPercChange(stats.todayTxns, stats.yesterdayTxns ?? 0);
   const profitChange = calcPercChange(stats.todayProfit, stats.yesterdayProfit ?? 0);
 
+  const fmtChange = (c, currentVal, prevVal) => {
+    if (!currentVal && !prevVal) return `<span style="color:var(--text-muted);font-size:.75rem;">— No data yet</span>`;
+    if (!prevVal && currentVal) return `<span style="color:var(--success);font-size:.75rem;">✦ New today</span>`;
+    return `${c.dir === 'up' ? '↑' : '↓'} ${c.val}% vs yesterday`;
+  };
+
   const sales = await DB.getSales();
   const recentSales = sales.slice(-6).reverse();
 
@@ -38,7 +44,7 @@ export async function renderDashboard() {
           </div>
           <div class="kpi-value">${formatCurrency(stats.todayRevenue)}</div>
           <div class="kpi-label">Today's Revenue</div>
-          <div class="kpi-change ${change.dir}">${change.dir === 'up' ? '↑' : '↓'} ${change.val}% vs yesterday</div>
+          <div class="kpi-change ${change.dir}">${fmtChange(change, stats.todayRevenue, stats.yesterdayRevenue)}</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon kpi-icon-cyan">
@@ -46,7 +52,7 @@ export async function renderDashboard() {
           </div>
           <div class="kpi-value">${stats.todayTxns}</div>
           <div class="kpi-label">Today's Transactions</div>
-          <div class="kpi-change ${txnChange.dir}">${txnChange.dir === 'up' ? '↑' : '↓'} ${txnChange.val}% vs yesterday</div>
+          <div class="kpi-change ${txnChange.dir}">${fmtChange(txnChange, stats.todayTxns, stats.yesterdayTxns ?? 0)}</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon kpi-icon-green">
@@ -54,7 +60,7 @@ export async function renderDashboard() {
           </div>
           <div class="kpi-value">${formatCurrency(stats.todayProfit ?? stats.totalProfit)}</div>
           <div class="kpi-label">Today's Profit</div>
-          <div class="kpi-change ${profitChange.dir}">${profitChange.dir === 'up' ? '↑' : '↓'} ${profitChange.val}% vs yesterday</div>
+          <div class="kpi-change ${profitChange.dir}">${fmtChange(profitChange, stats.todayProfit, stats.yesterdayProfit ?? 0)}</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-icon kpi-icon-amber">
