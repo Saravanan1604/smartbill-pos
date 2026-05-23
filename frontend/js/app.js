@@ -62,6 +62,9 @@ async function navigate(hash) {
     return;
   }
 
+  // Set translated page title in tab
+  const pageId = PAGE_ID_MAP[hash] || 'dashboard';
+
   // Role-based access guard
   if (!route.public && Auth.isLoggedIn()) {
     const session = Auth.getSession();
@@ -73,9 +76,6 @@ async function navigate(hash) {
       return;
     }
   }
-
-  // Set translated page title in tab
-  const pageId = PAGE_ID_MAP[hash] || 'dashboard';
   const pageTitle = window.t(`nav_${pageId}`) || route.title;
   document.title = `${pageTitle} — SmartBill POS`;
 
