@@ -5,20 +5,26 @@ import User from '../models/User.js';
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'smartbill_super_secret_jwt_key_2026';
 
-// Helper to generate JWT token
-const generateToken = (user) => {
-  return jwt.sign(
-    { id: user._id, username: user.username, role: user.role },
-    process.env.JWT_SECRET || 'smartbill_super_secret_jwt_key_2026',
-    { expiresIn: '30d' }
-  );
-};
+const generateToken = (user) =>
+  jwt.sign({ id: user._id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
 
-// Register Route (First user registration or Admin-only registrations)
+// ─── Setup status (is this a fresh install with no users?) ──────────────────
+router.get('/setup-status', async (req, res) => {
+  try {
+    const count = await User.countDocuments();
+    res.json({ setupRequired: count === 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Register ──────────────────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role, securityQuestion, securityAnswer } = req.body;
+
     if (!username || !password) {
       return res.status(400).json({ error: 'Username and password are required' });
     }
@@ -26,47 +32,53 @@ router.post('/register', async (req, res) => {
     const userCount = await User.countDocuments();
     let finalRole = role || 'staff';
 
-    // If it is the first user, force it to be admin
     if (userCount === 0) {
+      // First-ever user → force admin, no auth needed
       finalRole = 'admin';
     } else {
-      // If not the first user, require authentication and admin role to create new users
+      // Any subsequent user → must be an authenticated admin
       const authHeader = req.headers.authorization;
       if (!authHeader) {
-        return res.status(401).json({ error: 'Only admins can register other accounts.' });
+        return res.status(401).json({ error: 'Only admins can create new accounts.' });
       }
       try {
         const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'smartbill_super_secret_jwt_key_2026');
+        const decoded = jwt.verify(token, JWT_SECRET);
         if (decoded.role !== 'admin') {
           return res.status(403).json({ error: 'Access denied. Only admin users can create accounts.' });
         }
-      } catch (err) {
-        return res.status(401).json({ error: 'Unauthorized user registration.' });
+      } catch {
+        return res.status(401).json({ error: 'Unauthorized.' });
       }
     }
 
-    // Check if user already exists
     const existingUser = await User.findOne({ username: username.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ error: 'Username is already taken' });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Hash security answer if provided
+    let hashedAnswer = '';
+    if (securityAnswer && securityAnswer.trim()) {
+      hashedAnswer = await bcrypt.hash(securityAnswer.trim().toLowerCase(), salt);
+    }
 
     const newUser = new User({
       username: username.toLowerCase(),
       password: hashedPassword,
-      role: finalRole
+      role: finalRole,
+      securityQuestion: securityQuestion || '',
+      securityAnswer: hashedAnswer
     });
 
     await newUser.save();
     const token = generateToken(newUser);
 
     res.status(201).json({
-      message: 'User registered successfully!',
+      message: 'Account created successfully!',
       token,
       user: { id: newUser._id, username: newUser.username, role: newUser.role }
     });
@@ -75,7 +87,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// Login Route
+// ─── Login ─────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -83,13 +95,11 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    // Find user
     const user = await User.findOne({ username: username.toLowerCase() });
     if (!user) {
       return res.status(400).json({ error: 'Invalid username or password' });
     }
 
-    // Verify password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid username or password' });
@@ -106,24 +116,70 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Update current user credentials
+// ─── Get security question for a username (no auth needed) ─────────────────
+router.post('/get-security-question', async (req, res) => {
+  try {
+    const { username } = req.body;
+    if (!username) return res.status(400).json({ error: 'Username is required' });
+
+    const user = await User.findOne({ username: username.toLowerCase() });
+    if (!user) return res.status(404).json({ error: 'No account found with that username' });
+    if (!user.securityQuestion) {
+      return res.status(400).json({ error: 'No security question set for this account. Contact your admin.' });
+    }
+
+    res.json({ securityQuestion: user.securityQuestion });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Forgot / Reset password ───────────────────────────────────────────────
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { username, securityAnswer, newPassword } = req.body;
+    if (!username || !securityAnswer || !newPassword) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+
+    const user = await User.findOne({ username: username.toLowerCase() });
+    if (!user) return res.status(404).json({ error: 'No account found with that username' });
+    if (!user.securityAnswer) {
+      return res.status(400).json({ error: 'No security question set. Contact your admin to reset your password.' });
+    }
+
+    const answerMatch = await bcrypt.compare(securityAnswer.trim().toLowerCase(), user.securityAnswer);
+    if (!answerMatch) {
+      return res.status(400).json({ error: 'Security answer is incorrect' });
+    }
+
+    // Reset password
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res.json({ message: 'Password reset successfully! You can now sign in.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Update current user credentials ──────────────────────────────────────
 router.put('/update', authMiddleware, async (req, res) => {
   try {
     const { username, password } = req.body;
     const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (username) {
-      const lowerUsername = username.toLowerCase();
-      // Check if username is taken by another user
-      if (lowerUsername !== user.username) {
-        const existing = await User.findOne({ username: lowerUsername });
-        if (existing) {
-          return res.status(400).json({ error: 'Username is already taken' });
-        }
-        user.username = lowerUsername;
+      const lower = username.toLowerCase();
+      if (lower !== user.username) {
+        const existing = await User.findOne({ username: lower });
+        if (existing) return res.status(400).json({ error: 'Username is already taken' });
+        user.username = lower;
       }
     }
 
@@ -133,8 +189,6 @@ router.put('/update', authMiddleware, async (req, res) => {
     }
 
     await user.save();
-
-    // Generate new token with updated username/role
     const token = generateToken(user);
 
     res.json({
@@ -147,7 +201,7 @@ router.put('/update', authMiddleware, async (req, res) => {
   }
 });
 
-// Verify current session token
+// ─── Verify session ────────────────────────────────────────────────────────
 router.get('/check', authMiddleware, (req, res) => {
   res.json({ user: req.user });
 });

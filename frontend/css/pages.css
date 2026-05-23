@@ -23,6 +23,32 @@
 .login-feature-text{font-size:.8rem;color:var(--text-secondary);font-weight:500;}
 @media(max-width:640px){.login-right{display:none;}.login-left{padding:32px 24px;}}
 
+/* ── Login tabs ── */
+.login-tabs{display:flex;gap:4px;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:var(--radius-lg);padding:4px;margin-bottom:28px;}
+.login-tab{flex:1;padding:8px 6px;border:none;background:transparent;color:var(--text-muted);font-size:.75rem;font-weight:600;border-radius:calc(var(--radius-lg) - 3px);cursor:pointer;transition:all var(--transition-fast);white-space:nowrap;}
+.login-tab:hover:not(.active){color:var(--text-secondary);background:rgba(255,255,255,.05);}
+.login-tab.active{background:var(--gradient-brand);color:#fff;box-shadow:0 2px 8px rgba(124,58,237,.35);}
+/* ── Login views ── */
+.login-view{display:none;animation:fadeIn .2s ease;}
+.login-view.active{display:block;}
+.login-view-title{font-size:1.5rem;font-weight:800;color:var(--text-primary);margin-bottom:6px;}
+.login-view-sub{color:var(--text-muted);font-size:.85rem;margin-bottom:24px;}
+/* ── Security question box (forgot pw step 2) ── */
+.login-security-question-box{background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.25);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:18px;}
+.login-sq-label{font-size:.7rem;font-weight:700;color:var(--accent-violet-light);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;}
+.login-sq-text{font-size:.9rem;color:var(--text-primary);font-weight:500;line-height:1.4;}
+/* ── Notice boxes ── */
+.login-notice{display:flex;align-items:flex-start;gap:12px;padding:16px;border-radius:var(--radius-md);font-size:.85rem;line-height:1.5;}
+.login-notice-info{background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.25);color:var(--text-secondary);}
+.login-notice-info svg{color:var(--info);flex-shrink:0;margin-top:1px;}
+.login-notice-error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);color:var(--danger);}
+/* ── Spinner inside buttons ── */
+.btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+/* ── Select styled ── */
+.form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' viewBox='0 0 24 24'%3E%3Cpath stroke='%237C3AED' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;cursor:pointer;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+
 /* ===== DASHBOARD ===== */
 .dashboard-greeting{font-size:1.6rem;font-weight:800;background:var(--gradient-brand);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .dashboard-date{font-size:.875rem;color:var(--text-muted);margin-top:4px;}

@@ -132,6 +132,53 @@ export async function renderSettings() {
         </div>
       </div>
 
+      <!-- Manage Staff Accounts (admin only) -->
+      ${session && session.role === 'admin' ? `
+      <div class="settings-section" id="staff-accounts-section">
+        <div class="settings-section-header">
+          <div class="settings-section-icon" style="background:rgba(6,182,212,.15);color:var(--info);">👥</div>
+          <div>
+            <div class="settings-section-title">Manage Staff Accounts</div>
+            <div class="settings-section-sub">Create new staff accounts for your team members</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">New Username</label>
+              <input type="text" class="form-input" id="staff-username" placeholder="Enter username" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="password" class="form-input" id="staff-password" placeholder="Min. 6 characters" autocomplete="new-password">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">Security Question <span style="color:var(--text-muted);font-size:.75rem;">(for self-service password reset)</span></label>
+              <select class="form-input form-select" id="staff-sq">
+                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                <option value="What city were you born in?">What city were you born in?</option>
+                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                <option value="What was the name of your elementary school?">What was the name of your elementary school?</option>
+                <option value="What is the name of the street you grew up on?">What is the name of the street you grew up on?</option>
+                <option value="What was your childhood nickname?">What was your childhood nickname?</option>
+                <option value="What is the name of your favourite childhood friend?">What is the name of your favourite childhood friend?</option>
+              </select>
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+              <label class="form-label">Security Answer</label>
+              <input type="text" class="form-input" id="staff-sa" placeholder="The staff member's answer (case-insensitive)" autocomplete="off">
+            </div>
+          </div>
+          <div style="margin-top:16px;">
+            <button class="btn btn-primary" id="create-staff-btn">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+              Create Staff Account
+            </button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
       <!-- Theme & Language Preferences -->
       <div class="settings-section">
         <div class="settings-section-header">
@@ -308,6 +355,36 @@ export function initSettings() {
       toast.error('Error updating account: ' + err.message);
     } finally {
       if (btn) btn.disabled = false;
+    }
+  });
+
+  // Create Staff Account (admin only)
+  document.getElementById('create-staff-btn')?.addEventListener('click', async () => {
+    const username         = document.getElementById('staff-username')?.value?.trim();
+    const password         = document.getElementById('staff-password')?.value;
+    const securityQuestion = document.getElementById('staff-sq')?.value;
+    const securityAnswer   = document.getElementById('staff-sa')?.value?.trim();
+
+    if (!username || !password) return toast.warning('Please fill in username and password');
+    if (password.length < 6)    return toast.warning('Password must be at least 6 characters');
+    if (!securityAnswer)        return toast.warning('Please provide a security answer for account recovery');
+
+    const btn = document.getElementById('create-staff-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
+
+    const result = await Auth.register({ username, password, securityQuestion, securityAnswer });
+
+    if (result.ok) {
+      toast.success(`Staff account "${username}" created successfully!`);
+      document.getElementById('staff-username').value = '';
+      document.getElementById('staff-password').value = '';
+      document.getElementById('staff-sa').value = '';
+    } else {
+      toast.error(result.error);
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg> Create Staff Account`;
     }
   });
 

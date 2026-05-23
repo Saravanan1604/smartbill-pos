@@ -15,6 +15,15 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ['admin', 'staff'],
     default: 'staff'
+  },
+  // Security question/answer for self-service password reset
+  securityQuestion: {
+    type: String,
+    default: ''
+  },
+  securityAnswer: {
+    type: String,  // stored as bcrypt hash
+    default: ''
   }
 }, { timestamps: true });
 
