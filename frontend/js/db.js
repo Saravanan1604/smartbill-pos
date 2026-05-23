@@ -49,6 +49,10 @@ const DB = {
   getSettings()            { return this.request('/api/settings'); },
   saveSettings(s)          { return this.request('/api/settings', { method:'POST', body:JSON.stringify(s) }); },
 
+  // ── USERS (admin only) ────────────────────────────────────────────────────
+  getUsers()             { return this.request('/api/auth/users'); },
+  deleteUser(id)         { return this.request(`/api/auth/users/${id}`, { method:'DELETE' }); },
+
   // ── ANALYTICS ─────────────────────────────────────────────────────────────
   getDashboardStats()      { return this.request('/api/analytics/dashboard'); },
   getLast7DaysSales()      { return this.request('/api/analytics/sales-trend'); },

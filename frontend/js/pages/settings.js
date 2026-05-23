@@ -138,23 +138,40 @@ export async function renderSettings() {
         <div class="settings-section-header">
           <div class="settings-section-icon" style="background:rgba(6,182,212,.15);color:var(--info);">👥</div>
           <div>
-            <div class="settings-section-title">Manage Staff Accounts</div>
-            <div class="settings-section-sub">Create new staff accounts for your team members</div>
+            <div class="settings-section-title">Manage User Accounts</div>
+            <div class="settings-section-sub">Create Owner (Level 2) and Employee (Level 3) accounts</div>
           </div>
         </div>
+
+        <!-- Existing Users List -->
+        <div id="users-list-wrap" style="padding:0 24px 16px;">
+          <div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">Current Accounts</div>
+          <div id="users-list"><div style="color:var(--text-muted);font-size:.85rem;padding:8px 0;">Loading users…</div></div>
+        </div>
+        <div class="divider" style="margin:0;"></div>
+
+        <!-- Create New Account Form -->
         <div class="card-body">
+          <div style="font-size:.78rem;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px;">Create New Account</div>
           <div class="form-grid">
             <div class="form-group">
-              <label class="form-label">New Username</label>
+              <label class="form-label">Username</label>
               <input type="text" class="form-input" id="staff-username" placeholder="Enter username" autocomplete="off">
             </div>
             <div class="form-group">
               <label class="form-label">Password</label>
-              <input type="password" class="form-input" id="staff-password" placeholder="Min. 6 characters" autocomplete="new-password">
+              <input type="password" class="form-input" id="staff-password" placeholder="Min. 4 characters" autocomplete="new-password">
             </div>
-            <div class="form-group" style="grid-column:1/-1;">
-              <label class="form-label">Security Question <span style="color:var(--text-muted);font-size:.75rem;">(for self-service password reset)</span></label>
-              <select class="form-input form-select" id="staff-sq">
+            <div class="form-group">
+              <label class="form-label">Access Level</label>
+              <select class="form-select" id="staff-role">
+                <option value="owner">🏪 Level 2 — Owner (Stock + Reports + Billing)</option>
+                <option value="employee">👤 Level 3 — Employee (Billing + Customers only)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Security Question</label>
+              <select class="form-select" id="staff-sq">
                 <option value="What was the name of your first pet?">What was the name of your first pet?</option>
                 <option value="What city were you born in?">What city were you born in?</option>
                 <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
@@ -165,14 +182,14 @@ export async function renderSettings() {
               </select>
             </div>
             <div class="form-group" style="grid-column:1/-1;">
-              <label class="form-label">Security Answer</label>
-              <input type="text" class="form-input" id="staff-sa" placeholder="The staff member's answer (case-insensitive)" autocomplete="off">
+              <label class="form-label">Security Answer <span style="color:var(--text-muted);font-size:.75rem;">(for password self-reset)</span></label>
+              <input type="text" class="form-input" id="staff-sa" placeholder="e.g. Tommy, Chennai, Flower Street…" autocomplete="off">
             </div>
           </div>
           <div style="margin-top:16px;">
             <button class="btn btn-primary" id="create-staff-btn">
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
-              Create Staff Account
+              Create Account
             </button>
           </div>
         </div>
@@ -358,33 +375,87 @@ export function initSettings() {
     }
   });
 
-  // Create Staff Account (admin only)
+  // Load user list (admin only)
+  const ROLE_META = {
+    admin:    { label:'👑 Admin',    color:'#a78bfa', bg:'rgba(167,139,250,.12)' },
+    owner:    { label:'🏪 Owner',    color:'#fbbf24', bg:'rgba(251,191,36,.12)'  },
+    employee: { label:'👤 Employee', color:'#34d399', bg:'rgba(52,211,153,.12)'  },
+    staff:    { label:'👤 Staff',    color:'#60a5fa', bg:'rgba(96,165,250,.12)'  },
+  };
+
+  async function loadUsersList() {
+    const wrap = document.getElementById('users-list');
+    if (!wrap) return;
+    try {
+      const users = await DB.getUsers();
+      wrap.innerHTML = users.map(u => {
+        const meta = ROLE_META[u.role] || ROLE_META.employee;
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <div style="width:34px;height:34px;border-radius:50%;background:${meta.bg};display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;color:${meta.color};flex-shrink:0;">
+              ${u.username.slice(0,2).toUpperCase()}
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:.875rem;font-weight:600;color:var(--text-primary);">${u.username}</div>
+              <div style="font-size:.72rem;color:${meta.color};font-weight:600;">${meta.label}</div>
+            </div>
+            ${u.role !== 'admin' ? `
+              <button onclick="deleteUser('${u._id || u.id}','${u.username}')"
+                style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--danger);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:.75rem;font-weight:600;">
+                Delete
+              </button>
+            ` : '<span style="font-size:.72rem;color:var(--text-muted);">Protected</span>'}
+          </div>`;
+      }).join('') || '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0;">No accounts found.</div>';
+    } catch {
+      wrap.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;">Could not load users.</div>';
+    }
+  }
+
+  loadUsersList();
+
+  window.deleteUser = async (id, uname) => {
+    const ok = await confirmDialog(`Delete account "${uname}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      await DB.deleteUser(id);
+      toast.success(`Account "${uname}" deleted`);
+      loadUsersList();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  // Create Account (admin only)
   document.getElementById('create-staff-btn')?.addEventListener('click', async () => {
     const username         = document.getElementById('staff-username')?.value?.trim();
     const password         = document.getElementById('staff-password')?.value;
+    const role             = document.getElementById('staff-role')?.value || 'employee';
     const securityQuestion = document.getElementById('staff-sq')?.value;
     const securityAnswer   = document.getElementById('staff-sa')?.value?.trim();
 
     if (!username || !password) return toast.warning('Please fill in username and password');
-    if (password.length < 6)    return toast.warning('Password must be at least 6 characters');
+    if (password.length < 4)    return toast.warning('Password must be at least 4 characters');
     if (!securityAnswer)        return toast.warning('Please provide a security answer for account recovery');
 
     const btn = document.getElementById('create-staff-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Creating…'; }
 
-    const result = await Auth.register({ username, password, securityQuestion, securityAnswer });
+    const result = await Auth.register({ username, password, role, securityQuestion, securityAnswer });
 
     if (result.ok) {
-      toast.success(`Staff account "${username}" created successfully!`);
+      const roleLabel = role === 'owner' ? '🏪 Owner' : '👤 Employee';
+      toast.success(`${roleLabel} account "${username}" created!`);
       document.getElementById('staff-username').value = '';
       document.getElementById('staff-password').value = '';
       document.getElementById('staff-sa').value = '';
+      loadUsersList();  // Refresh the list
     } else {
       toast.error(result.error);
     }
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg> Create Staff Account`;
+      btn.innerHTML = `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg> Create Account`;
     }
   });
 

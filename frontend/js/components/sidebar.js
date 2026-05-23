@@ -2,6 +2,23 @@
 import Auth from '../auth.js';
 import DB from '../db.js';
 
+// ── Role access map ──────────────────────────────────────────────────────────
+// Defines which page IDs each role can see in the sidebar
+const ROLE_ACCESS = {
+  admin:    new Set(['dashboard','billing','products','inventory','reports','customers','settings']),
+  owner:    new Set(['dashboard','billing','products','inventory','reports','customers']),
+  employee: new Set(['dashboard','billing','customers']),
+  staff:    new Set(['dashboard','billing','products','inventory','reports','customers']), // legacy
+};
+
+// ── Role display info ─────────────────────────────────────────────────────────
+const ROLE_META = {
+  admin:    { label:'👑 Admin',    color:'#a78bfa' },
+  owner:    { label:'🏪 Owner',    color:'#fbbf24' },
+  employee: { label:'👤 Employee', color:'#34d399' },
+  staff:    { label:'👤 Staff',    color:'#60a5fa' },
+};
+
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', hash: '#dashboard', icon: `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>` },
   { id: 'billing',   label: 'Billing / POS', hash: '#billing', icon: `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>`, highlight: true },
@@ -16,27 +33,47 @@ const NAV_ITEMS = [
 ];
 
 export function renderSidebar(activeId) {
-  const session = Auth.getSession();
+  const session  = Auth.getSession();
   const settings = window.shopSettings || { shopName: 'SmartBill Store', currency: '₹' };
-  const stats = window.dashboardStats || { lowStock: [], outOfStock: [] };
+  const stats    = window.dashboardStats || { lowStock: [], outOfStock: [] };
   const lowStockCount = (stats.lowStock?.length || 0) + (stats.outOfStock?.length || 0);
+
+  const role    = session?.role || 'employee';
+  const access  = ROLE_ACCESS[role] || ROLE_ACCESS.employee;
+  const roleMeta = ROLE_META[role] || ROLE_META.employee;
+
+  let lastDividerWasShown = false;
+  let pendingDivider = null;
 
   const navHTML = NAV_ITEMS.map(item => {
     if (item.divider) {
-      const sectionLabel = window.t(`nav_section_${item.divider.toLowerCase()}`) || item.divider;
-      return `<div class="sidebar-section-label">${sectionLabel}</div>`;
+      pendingDivider = item.divider;
+      return '';  // render lazily, only if a visible item follows
     }
+    // Check access
+    if (!access.has(item.id)) return '';
+
+    // Render any pending divider first
+    let out = '';
+    if (pendingDivider) {
+      const sectionLabel = window.t(`nav_section_${pendingDivider.toLowerCase()}`) || pendingDivider;
+      out += `<div class="sidebar-section-label">${sectionLabel}</div>`;
+      pendingDivider = null;
+    }
+
     const badge = item.badgeKey === 'lowStock' && lowStockCount > 0
       ? `<span class="nav-badge">${lowStockCount}</span>` : '';
     const active = item.id === activeId ? 'active' : '';
-    const label = window.t(`nav_${item.id}`) || item.label;
-    return `
+    const label  = window.t(`nav_${item.id}`) || item.label;
+
+    out += `
       <div class="nav-item ${active}" data-hash="${item.hash}" onclick="window.location.hash='${item.hash}'">
         <span class="nav-icon">${item.icon}</span>
         <span>${label}</span>
         ${badge}
       </div>
     `;
+    return out;
   }).join('');
 
   const initials = (session?.username || 'A').slice(0, 2).toUpperCase();
@@ -52,15 +89,13 @@ export function renderSidebar(activeId) {
       </div>
       <div class="sidebar-section">${navHTML}</div>
       <div class="sidebar-footer">
-        <div class="sidebar-user" onclick="window.location.hash='#settings'">
+        <div class="sidebar-user" onclick="${role === 'admin' ? "window.location.hash='#settings'" : 'void(0)'}">
           <div class="sidebar-avatar">${initials}</div>
           <div class="sidebar-user-info">
             <div class="sidebar-user-name">${session?.username || 'Admin'}</div>
-            <div class="sidebar-user-role">${session?.role === 'admin' ? window.t('administrator') : window.t('staff')}</div>
+            <div class="sidebar-user-role" style="color:${roleMeta.color};font-weight:600;">${roleMeta.label}</div>
           </div>
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
-          </svg>
+          ${role === 'admin' ? `<svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--text-muted)"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>` : ''}
         </div>
       </div>
     </aside>
@@ -80,3 +115,6 @@ window.closeSidebar = () => {
   document.getElementById('main-sidebar')?.classList.remove('open');
   document.getElementById('sidebar-overlay')?.classList.remove('show');
 };
+
+// Export access check for use by router
+export { ROLE_ACCESS };

@@ -43,7 +43,7 @@ const Auth = {
   },
 
   // ─── Register (first user auto-admin; subsequent require admin token) ──────
-  async register({ username, password, securityQuestion, securityAnswer }) {
+  async register({ username, password, role, securityQuestion, securityAnswer }) {
     try {
       const headers = { 'Content-Type': 'application/json' };
       const session = this.getSession();
@@ -52,7 +52,7 @@ const Auth = {
       const response = await fetch(`${this._base()}/api/auth/register`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ username, password, securityQuestion, securityAnswer })
+        body: JSON.stringify({ username, password, role: role || 'employee', securityQuestion, securityAnswer })
       });
       const data = await response.json();
       if (!response.ok) return { ok: false, error: data.error || 'Registration failed' };
@@ -141,6 +141,15 @@ const Auth = {
   isAdmin() {
     const s = this.getSession();
     return s && s.role === 'admin';
+  },
+
+  isOwnerOrAbove() {
+    const s = this.getSession();
+    return s && (s.role === 'admin' || s.role === 'owner' || s.role === 'staff');
+  },
+
+  getRole() {
+    return this.getSession()?.role || 'employee';
   },
 
   getHeaders() {

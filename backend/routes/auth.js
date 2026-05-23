@@ -201,6 +201,32 @@ router.put('/update', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── List all users (admin only) ──────────────────────────────────────────
+router.get('/users', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    const users = await User.find({}, 'username role createdAt').sort({ createdAt: 1 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Delete a user (admin only, cannot delete self or other admins) ────────
+router.delete('/users/:id', authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'admin') return res.status(400).json({ error: 'Cannot delete another admin account' });
+    await user.deleteOne();
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
 // ─── Verify session ────────────────────────────────────────────────────────
 router.get('/check', authMiddleware, (req, res) => {
   res.json({ user: req.user });

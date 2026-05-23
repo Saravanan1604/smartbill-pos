@@ -113,32 +113,32 @@ connectDB()
 // Database Seeding Helper
 async function seedDatabase() {
   try {
-    // 1. Seed Users (Admin & Staff)
-    const userCount = await User.countDocuments();
-    if (userCount === 0) {
-      console.log('🌱 Seeding default user accounts...');
-      
-      const adminSalt = await bcrypt.genSalt(10);
-      const adminPassword = await bcrypt.hash('admin123', adminSalt);
-      const adminUser = new User({
-        username: 'admin',
-        password: adminPassword,
-        role: 'admin'
-      });
-      await adminUser.save();
-
-      const staffSalt = await bcrypt.genSalt(10);
-      const staffPassword = await bcrypt.hash('staff123', staffSalt);
-      const staffUser = new User({
-        username: 'staff',
-        password: staffPassword,
-        role: 'staff'
-      });
-      await staffUser.save();
-      console.log('✅ User accounts seeded (admin / admin123, staff / staff123)');
+    // ── 1. Ensure admin exists with password 8220 ──────────────────────────
+    let adminUser = await User.findOne({ username: 'admin' });
+    if (!adminUser) {
+      const salt = await bcrypt.genSalt(10);
+      const pwd  = await bcrypt.hash('8220', salt);
+      await new User({ username: 'admin', password: pwd, role: 'admin' }).save();
+      console.log('✅ Admin account created (admin / 8220)');
+    } else {
+      // Migrate old default password admin123 → 8220
+      const isOldPwd = await bcrypt.compare('admin123', adminUser.password);
+      if (isOldPwd) {
+        const salt = await bcrypt.genSalt(10);
+        adminUser.password = await bcrypt.hash('8220', salt);
+        adminUser.role = 'admin';
+        await adminUser.save();
+        console.log('✅ Admin password migrated → 8220');
+      }
     }
 
-    // 2. Seed Settings
+    // ── 2. Migrate legacy 'staff' role → 'employee' ────────────────────────
+    const migrated = await User.updateMany({ role: 'staff' }, { $set: { role: 'employee' } });
+    if (migrated.modifiedCount > 0) {
+      console.log(`✅ ${migrated.modifiedCount} legacy staff account(s) migrated → employee`);
+    }
+
+    // 3. Seed Settings
     const settingsCount = await Settings.countDocuments();
     if (settingsCount === 0) {
       console.log('🌱 Seeding default shop settings...');
@@ -155,7 +155,7 @@ async function seedDatabase() {
       console.log('✅ Settings seeded');
     }
 
-    // 3. Seed Products
+    // 4. Seed Products
     const productCount = await Product.countDocuments();
     if (productCount === 0) {
       console.log('🌱 Seeding sample products...');
@@ -178,7 +178,7 @@ async function seedDatabase() {
       console.log('✅ Sample products seeded');
     }
 
-    // 4. Seed Customers
+    // 5. Seed Customers
     const customerCount = await Customer.countDocuments();
     if (customerCount === 0) {
       console.log('🌱 Seeding sample customers...');

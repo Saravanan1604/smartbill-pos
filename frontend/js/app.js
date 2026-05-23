@@ -3,7 +3,7 @@ import DB from './db.js';
 import Auth from './auth.js';
 import toast from './components/toast.js';
 import './utils/i18n.js';
-import { renderSidebar, initSidebarMobile } from './components/sidebar.js';
+import { renderSidebar, initSidebarMobile, ROLE_ACCESS } from './components/sidebar.js';
 
 import { renderLogin,    initLogin    } from './pages/login.js';
 import { renderDashboard, initDashboard } from './pages/dashboard.js';
@@ -60,6 +60,18 @@ async function navigate(hash) {
   if (hash === '#login' && Auth.isLoggedIn()) {
     window.location.hash = '#dashboard';
     return;
+  }
+
+  // Role-based access guard
+  if (!route.public && Auth.isLoggedIn()) {
+    const session = Auth.getSession();
+    const role    = session?.role || 'employee';
+    const allowed = ROLE_ACCESS[role] || ROLE_ACCESS.employee;
+    if (!allowed.has(pageId)) {
+      // Redirect to the best accessible page for this role
+      window.location.hash = '#billing';
+      return;
+    }
   }
 
   // Set translated page title in tab

@@ -13,8 +13,8 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'staff'],
-    default: 'staff'
+    enum: ['admin', 'owner', 'employee', 'staff'],  // staff kept for backward compat
+    default: 'employee'
   },
   // Security question/answer for self-service password reset
   securityQuestion: {
