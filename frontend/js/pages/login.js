@@ -167,6 +167,9 @@ export async function renderLogin() {
 
 // ─── Init ──────────────────────────────────────────────────────────────────
 export async function initLogin() {
+  // ── Ping backend immediately so it wakes up before the user clicks Sign In ──
+  fetch(`${window.API_BASE_URL || 'http://localhost:5000'}/`, { method: 'GET' }).catch(() => {});
+
   // ── Tab switching ──
   document.querySelectorAll('.login-tab').forEach(tab => {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
@@ -218,11 +221,27 @@ async function handleSignIn() {
   const btn = document.getElementById('signin-btn');
   setLoading(btn, true, 'Signing in…');
 
+  // Show "server waking up" hint after 5 s if still waiting
+  const hintId = 'signin-wakeup-hint';
+  document.getElementById(hintId)?.remove();
+  const wakeTimer = setTimeout(() => {
+    const hint = document.createElement('div');
+    hint.id = hintId;
+    hint.style.cssText = 'margin-top:10px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;font-size:.8rem;color:#fbbf24;text-align:center;line-height:1.5;';
+    hint.innerHTML = '⏳ Server is waking up (free tier).<br>Please wait up to 60 seconds…';
+    btn.insertAdjacentElement('afterend', hint);
+  }, 5000);
+
   const result = await Auth.login(user, pass);
+  clearTimeout(wakeTimer);
+  document.getElementById(hintId)?.remove();
 
   if (result.ok) {
     toast.success(`Welcome back, ${user}!`);
     setTimeout(() => window.location.hash = '#dashboard', 400);
+  } else if (result.error === 'TIMEOUT') {
+    toast.warning('Server took too long to respond. It may be starting up — please try again in 30 seconds.');
+    setLoading(btn, false, `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg> Try Again`);
   } else {
     toast.error(result.error);
     setLoading(btn, false, `<svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/></svg> Sign In`);

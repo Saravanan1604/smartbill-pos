@@ -7,10 +7,25 @@ const Auth = {
     return window.API_BASE_URL || 'http://localhost:5000';
   },
 
+  // ─── Fetch with timeout helper ─────────────────────────────────────────────
+  async _fetch(url, options = {}, timeoutMs = 35000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return response;
+    } catch (err) {
+      clearTimeout(timer);
+      if (err.name === 'AbortError') throw new Error('TIMEOUT');
+      throw err;
+    }
+  },
+
   // ─── Login ─────────────────────────────────────────────────────────────────
   async login(username, password) {
     try {
-      const response = await fetch(`${this._base()}/api/auth/login`, {
+      const response = await this._fetch(`${this._base()}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -26,7 +41,10 @@ const Auth = {
       };
       sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
       return { ok: true, session };
-    } catch {
+    } catch (err) {
+      if (err.message === 'TIMEOUT') {
+        return { ok: false, error: 'TIMEOUT' };
+      }
       return { ok: false, error: 'Cannot connect to server. Please try again.' };
     }
   },
