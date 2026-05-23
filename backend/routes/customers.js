@@ -3,11 +3,9 @@ import Customer from '../models/Customer.js';
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
-
-// Apply auth middleware to all customer routes
 router.use(authMiddleware);
 
-// Get all customers
+// ─── Get all customers ────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
     const customers = await Customer.find().sort({ name: 1 });
@@ -17,28 +15,24 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Add a new customer
+// ─── Add customer ─────────────────────────────────────────────────────────────
 router.post('/', async (req, res) => {
   try {
-    const { name, phone, email } = req.body;
-    if (!name) {
-      return res.status(400).json({ error: 'Customer name is required.' });
-    }
+    const { name, phone, email, notes, birthday, tags } = req.body;
+    if (!name) return res.status(400).json({ error: 'Customer name is required.' });
 
-    // Check phone uniqueness if provided
     if (phone) {
-      const existingCust = await Customer.findOne({ phone: phone.trim() });
-      if (existingCust) {
-        return res.status(400).json({ error: `A customer with phone number '${phone}' already exists.` });
-      }
+      const exists = await Customer.findOne({ phone: phone.trim() });
+      if (exists) return res.status(400).json({ error: `Phone '${phone}' already exists.` });
     }
 
     const newCustomer = new Customer({
-      name,
-      phone: phone ? phone.trim() : undefined,
+      name, phone: phone ? phone.trim() : undefined,
       email: email ? email.trim() : undefined,
-      totalSpent: 0,
-      visitCount: 0
+      notes: notes || '', birthday: birthday || '',
+      tags: Array.isArray(tags) ? tags : [],
+      loyaltyPoints: 0, creditBalance: 0,
+      totalSpent: 0, visitCount: 0
     });
 
     await newCustomer.save();
@@ -48,53 +42,44 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Update a customer
+// ─── Update customer ──────────────────────────────────────────────────────────
 router.put('/:id', async (req, res) => {
   try {
-    const { name, phone, email, totalSpent, visitCount, lastVisit } = req.body;
+    const { name, phone, email, totalSpent, visitCount, lastVisit,
+            loyaltyPoints, creditBalance, notes, birthday, tags } = req.body;
 
     if (phone) {
-      const existingCust = await Customer.findOne({ 
-        phone: phone.trim(), 
-        _id: { $ne: req.params.id } 
-      });
-      if (existingCust) {
-        return res.status(400).json({ error: `A customer with phone number '${phone}' already exists.` });
-      }
+      const exists = await Customer.findOne({ phone: phone.trim(), _id: { $ne: req.params.id } });
+      if (exists) return res.status(400).json({ error: `Phone '${phone}' already exists.` });
     }
 
     const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (phone !== undefined) updates.phone = phone ? phone.trim() : undefined;
-    if (email !== undefined) updates.email = email ? email.trim() : undefined;
-    if (totalSpent !== undefined) updates.totalSpent = parseFloat(totalSpent);
-    if (visitCount !== undefined) updates.visitCount = parseInt(visitCount);
-    if (lastVisit !== undefined) updates.lastVisit = lastVisit;
+    if (name          !== undefined) updates.name          = name;
+    if (phone         !== undefined) updates.phone         = phone ? phone.trim() : undefined;
+    if (email         !== undefined) updates.email         = email ? email.trim() : undefined;
+    if (totalSpent    !== undefined) updates.totalSpent    = parseFloat(totalSpent);
+    if (visitCount    !== undefined) updates.visitCount    = parseInt(visitCount);
+    if (lastVisit     !== undefined) updates.lastVisit     = lastVisit;
+    if (loyaltyPoints !== undefined) updates.loyaltyPoints = Math.max(0, parseInt(loyaltyPoints) || 0);
+    if (creditBalance !== undefined) updates.creditBalance = parseFloat(creditBalance) || 0;
+    if (notes         !== undefined) updates.notes         = notes;
+    if (birthday      !== undefined) updates.birthday      = birthday;
+    if (tags          !== undefined) updates.tags          = Array.isArray(tags) ? tags : [];
 
-    const updatedCustomer = await Customer.findByIdAndUpdate(
-      req.params.id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
-    if (!updatedCustomer) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-
-    res.json(updatedCustomer);
+    const updated = await Customer.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Customer not found' });
+    res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
   }
 });
 
-// Delete a customer
+// ─── Delete customer ──────────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
-    const deletedCustomer = await Customer.findByIdAndDelete(req.params.id);
-    if (!deletedCustomer) {
-      return res.status(404).json({ error: 'Customer not found' });
-    }
-    res.json({ message: 'Customer deleted successfully', id: req.params.id });
+    const deleted = await Customer.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ error: 'Customer not found' });
+    res.json({ message: 'Customer deleted', id: req.params.id });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
   }

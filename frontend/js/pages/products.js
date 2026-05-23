@@ -1,12 +1,31 @@
 // ===== Products Page =====
 import DB from '../db.js';
-import { formatCurrency, formatDate } from '../utils/format.js';
+import { formatCurrency } from '../utils/format.js';
 import { createModal, closeModal, confirmDialog } from '../components/modal.js';
 import toast from '../components/toast.js';
 import { openScanner } from '../components/scanner.js';
 
 const CATEGORIES = ['Grocery','Dairy','Bakery','Beverages','Snacks','Personal Care','Household','Stationery','Electronics','Clothing','Other'];
-const TAX_RATES = [0, 5, 12, 18, 28];
+const UNITS      = ['pcs','kg','g','L','mL','box','dozen','pack','m','roll'];
+const TAX_RATES  = [0, 5, 12, 18, 28];
+
+const CAT_COLOR = {
+  'Grocery':      { color:'#10b981', bg:'rgba(16,185,129,.12)', icon:'🌾' },
+  'Dairy':        { color:'#06b6d4', bg:'rgba(6,182,212,.12)',  icon:'🥛' },
+  'Bakery':       { color:'#f59e0b', bg:'rgba(245,158,11,.12)', icon:'🍞' },
+  'Beverages':    { color:'#3b82f6', bg:'rgba(59,130,246,.12)', icon:'🧃' },
+  'Snacks':       { color:'#f97316', bg:'rgba(249,115,22,.12)', icon:'🍿' },
+  'Personal Care':{ color:'#ec4899', bg:'rgba(236,72,153,.12)', icon:'🧴' },
+  'Household':    { color:'#7c3aed', bg:'rgba(124,58,237,.12)', icon:'🏠' },
+  'Stationery':   { color:'#6366f1', bg:'rgba(99,102,241,.12)', icon:'📝' },
+  'Electronics':  { color:'#eab308', bg:'rgba(234,179,8,.12)',  icon:'⚡' },
+  'Clothing':     { color:'#f43f5e', bg:'rgba(244,63,94,.12)',  icon:'👕' },
+  'Other':        { color:'#64748b', bg:'rgba(100,116,139,.12)',icon:'📦' },
+};
+
+function catOf(name) {
+  return CAT_COLOR[name] || { color:'#7c3aed', bg:'rgba(124,58,237,.12)', icon:'📦' };
+}
 
 export async function renderProducts() {
   const products = await DB.getProducts();
@@ -17,39 +36,40 @@ export async function renderProducts() {
           <h1>Products</h1>
           <p>${products.length} products in inventory</p>
         </div>
-        <div style="display:flex;gap:10px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-secondary" id="export-products-btn">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            Export
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Export CSV
           </button>
           <button class="btn btn-primary" id="add-product-btn">
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             Add Product
           </button>
         </div>
       </div>
 
       <!-- Toolbar -->
-      <div class="products-toolbar mb-6">
-        <div class="search-bar" style="flex:1;max-width:360px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;">
+        <div class="search-bar" style="flex:1;min-width:200px;">
           <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          <input type="text" class="form-input" id="product-search" placeholder="Search by name or barcode..." style="padding-left:38px;">
+          <input type="text" class="form-input" id="product-search" placeholder="Search by name or barcode…" style="padding-left:38px;">
         </div>
         <select class="form-select" id="cat-filter" style="width:160px;">
           <option value="">All Categories</option>
-          ${CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join('')}
+          ${CATEGORIES.map(c => `<option value="${c}">${catOf(c).icon} ${c}</option>`).join('')}
         </select>
         <select class="form-select" id="sort-filter" style="width:160px;">
-          <option value="name">Sort by Name</option>
-          <option value="price">Sort by Price</option>
-          <option value="stock">Sort by Stock</option>
+          <option value="name">Sort: Name</option>
+          <option value="price">Sort: Price</option>
+          <option value="stock">Sort: Stock</option>
+          <option value="margin">Sort: Margin%</option>
           <option value="recent">Recently Added</option>
         </select>
       </div>
 
       <!-- Product Grid -->
       <div class="grid-auto" id="products-grid">
-        ${renderProductCards(products, '', '', 'name')}
+        ${renderProductCards(products,'','','name')}
       </div>
     </div>
   `;
@@ -57,50 +77,65 @@ export async function renderProducts() {
 
 function renderProductCards(products, query, category, sort) {
   let filtered = products.filter(p => {
-    const q = !query || p.name.toLowerCase().includes(query.toLowerCase()) || (p.barcode && p.barcode.includes(query));
+    const q = !query    || p.name.toLowerCase().includes(query.toLowerCase()) || (p.barcode && p.barcode.includes(query));
     const c = !category || p.category === category;
     return q && c;
   });
 
-  if (sort === 'price') filtered.sort((a, b) => a.price - b.price);
-  else if (sort === 'stock') filtered.sort((a, b) => a.stock - b.stock);
-  else if (sort === 'recent') filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  else filtered.sort((a, b) => a.name.localeCompare(b.name));
+  if (sort === 'price')   filtered.sort((a,b) => a.price - b.price);
+  else if (sort === 'stock')  filtered.sort((a,b) => a.stock - b.stock);
+  else if (sort === 'margin') filtered.sort((a,b) => {
+    const ma = a.costPrice > 0 ? ((a.price - a.costPrice) / a.price) * 100 : 0;
+    const mb = b.costPrice > 0 ? ((b.price - b.costPrice) / b.price) * 100 : 0;
+    return mb - ma;
+  });
+  else if (sort === 'recent') filtered.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+  else filtered.sort((a,b) => a.name.localeCompare(b.name));
 
   if (!filtered.length) return `<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">📦</div><h3>No products found</h3><p>Add your first product to get started</p></div>`;
 
   return filtered.map(p => {
-    const stockStatus = p.stock === 0 ? 'out' : p.stock <= (p.alertThreshold || 10) ? 'low' : 'ok';
-    const stockClass = { ok: 'stock-ok', low: 'stock-low', out: 'stock-out' }[stockStatus];
+    const stockSt  = p.stock === 0 ? 'out' : p.stock <= (p.alertThreshold || 10) ? 'low' : 'ok';
+    const stockClr = { ok:'var(--success)', low:'var(--warning)', out:'var(--danger)' }[stockSt];
+    const ci       = catOf(p.category || 'Other');
+    const margin   = p.costPrice > 0 ? Math.round(((p.price - p.costPrice) / p.price) * 100) : null;
     return `
-      <div class="product-card">
-        <div class="product-card-header">
-          <div>
-            <div class="product-card-name">${p.name}</div>
-            <div class="product-card-cat">${p.category || 'Uncategorized'}</div>
-          </div>
-          <div class="product-card-actions">
-            <button class="btn btn-ghost btn-icon-sm" onclick="window.editProduct('${p.id}')" data-tooltip="Edit">
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      <div class="prod-card" style="--cat-color:${ci.color};--cat-bg:${ci.bg};">
+        <div class="prod-card-top">
+          <div class="prod-cat-chip">${ci.icon} ${p.category || 'Other'}</div>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-icon-sm" onclick="window.duplicateProduct('${p.id}')" title="Duplicate">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </button>
-            <button class="btn btn-danger btn-icon-sm" onclick="window.deleteProduct('${p.id}')" data-tooltip="Delete">
-              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <button class="btn btn-ghost btn-icon-sm" onclick="window.editProduct('${p.id}')" title="Edit">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            </button>
+            <button class="btn btn-danger btn-icon-sm" onclick="window.deleteProduct('${p.id}')" title="Delete">
+              <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </button>
           </div>
         </div>
-        <div class="product-card-barcode">📊 ${p.barcode || 'N/A'}</div>
-        <div class="product-card-price">${formatCurrency(p.price)}</div>
-        ${p.costPrice ? `<div style="font-size:.75rem;color:var(--text-muted);margin-top:4px;">Cost: ${formatCurrency(p.costPrice)} · Margin: ${Math.round(((p.price - p.costPrice) / p.price) * 100)}%</div>` : ''}
-        <div class="product-card-stock">
-          <span class="product-card-stock-val ${stockClass}">
-            <span class="status-dot ${stockStatus}" style="margin-right:4px;"></span>
-            ${p.stock} units
+        <div class="prod-card-name">${p.name}</div>
+        ${p.barcode ? `<div class="prod-barcode">📊 ${p.barcode}</div>` : ''}
+        ${p.supplier ? `<div style="font-size:.72rem;color:var(--text-muted);margin-top:2px;">🏭 ${p.supplier}</div>` : ''}
+        <div class="prod-price-row">
+          <span class="prod-price">${formatCurrency(p.price)}</span>
+          ${p.unit && p.unit !== 'pcs' ? `<span style="font-size:.72rem;color:var(--text-muted);">/ ${p.unit}</span>` : ''}
+        </div>
+        ${p.costPrice ? `
+          <div class="prod-cost-row">
+            <span>Cost: ${formatCurrency(p.costPrice)}</span>
+            ${margin !== null ? `<span class="prod-margin" style="background:${margin > 20 ? 'var(--success-glow)' : 'var(--accent-amber-glow)'};color:${margin > 20 ? 'var(--success)' : 'var(--accent-amber)'};">${margin}%</span>` : ''}
+          </div>` : ''}
+        <div class="prod-stock-row">
+          <span style="color:${stockClr};font-weight:700;font-size:.85rem;font-family:'JetBrains Mono',monospace;">
+            <span class="status-dot ${stockSt}" style="margin-right:4px;"></span>${p.stock} ${p.unit||'pcs'}
           </span>
-          <span class="badge ${stockStatus === 'ok' ? 'badge-green' : stockStatus === 'low' ? 'badge-amber' : 'badge-red'}">
-            ${stockStatus === 'ok' ? 'In Stock' : stockStatus === 'low' ? 'Low' : 'Out'}
+          <span class="badge ${stockSt==='ok'?'badge-green':stockSt==='low'?'badge-amber':'badge-red'}">
+            ${stockSt==='ok'?'In Stock':stockSt==='low'?'Low Stock':'Out of Stock'}
           </span>
         </div>
-        ${p.tax ? `<div style="margin-top:8px;"><span class="badge badge-muted">GST ${p.tax}%</span></div>` : ''}
+        ${p.tax ? `<div style="margin-top:6px;"><span class="badge badge-muted">GST ${p.tax}%</span></div>` : ''}
       </div>
     `;
   }).join('');
@@ -109,37 +144,42 @@ function renderProductCards(products, query, category, sort) {
 export function initProducts() {
   let query = '', category = '', sort = 'name';
 
-  document.getElementById('product-search')?.addEventListener('input', e => {
-    query = e.target.value;
-    refreshGrid();
-  });
-  document.getElementById('cat-filter')?.addEventListener('change', e => {
-    category = e.target.value;
-    refreshGrid();
-  });
-  document.getElementById('sort-filter')?.addEventListener('change', e => {
-    sort = e.target.value;
-    refreshGrid();
-  });
+  // Check if coming from inventory edit redirect
+  const editId = sessionStorage.getItem('editProductId');
+  if (editId) {
+    sessionStorage.removeItem('editProductId');
+    setTimeout(async () => {
+      const products = await DB.getProducts();
+      const p = products.find(x => x.id === editId);
+      if (p) showProductModal(p, refreshGrid);
+    }, 200);
+  }
+
+  document.getElementById('product-search')?.addEventListener('input', e => { query = e.target.value; refreshGrid(); });
+  document.getElementById('cat-filter')?.addEventListener('change', e => { category = e.target.value; refreshGrid(); });
+  document.getElementById('sort-filter')?.addEventListener('change', e => { sort = e.target.value; refreshGrid(); });
 
   async function refreshGrid() {
     const products = await DB.getProducts();
-    document.getElementById('products-grid').innerHTML = renderProductCards(products, query, category, sort);
+    const el = document.getElementById('products-grid');
+    if (el) el.innerHTML = renderProductCards(products, query, category, sort);
   }
 
   document.getElementById('add-product-btn')?.addEventListener('click', () => showProductModal(null, refreshGrid));
 
   document.getElementById('export-products-btn')?.addEventListener('click', async () => {
     const products = await DB.getProducts();
-    const csv = ['Name,Barcode,Price,Cost Price,Stock,Category,Tax%,Alert Threshold',
-      ...products.map(p => `${p.name},${p.barcode},${p.price},${p.costPrice||''},${p.stock},${p.category},${p.tax||0},${p.alertThreshold||10}`)
+    const csv = ['Name,Barcode,Category,Unit,Supplier,Price,Cost Price,Margin%,Stock,Alert Threshold,Tax%,Expiry',
+      ...products.map(p => {
+        const m = p.costPrice > 0 ? Math.round(((p.price - p.costPrice) / p.price) * 100) : '';
+        return `"${p.name}",${p.barcode||''},${p.category||''},${p.unit||'pcs'},"${p.supplier||''}",${p.price},${p.costPrice||''},${m},${p.stock},${p.alertThreshold||10},${p.tax||0},${p.expiryDate?new Date(p.expiryDate).toLocaleDateString('en-IN'):''}`;
+      })
     ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'smartbill-products.csv';
-    a.click();
-    toast.success('Products exported as CSV');
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(new Blob([csv], { type:'text/csv' })),
+      download: 'smartbill-products.csv'
+    });
+    a.click(); toast.success('Products exported!');
   });
 
   window.editProduct = async (id) => {
@@ -148,18 +188,40 @@ export function initProducts() {
     if (p) showProductModal(p, refreshGrid);
   };
 
+  window.duplicateProduct = async (id) => {
+    const products = await DB.getProducts();
+    const p = products.find(x => x.id === id);
+    if (!p) return;
+    const copy = {
+      name: p.name + ' (Copy)', barcode: '', category: p.category,
+      price: p.price, costPrice: p.costPrice, stock: 0,
+      alertThreshold: p.alertThreshold, tax: p.tax,
+      unit: p.unit, supplier: p.supplier, description: p.description
+    };
+    await DB.addProduct(copy);
+    toast.success(`"${p.name}" duplicated!`);
+    refreshGrid();
+  };
+
   window.deleteProduct = async (id) => {
     const ok = await confirmDialog('Delete this product permanently? This cannot be undone.', 'Delete Product');
     if (ok) {
       await DB.deleteProduct(id);
       toast.success('Product deleted');
-      await refreshGrid();
+      refreshGrid();
     }
   };
 }
 
 function showProductModal(product, onSave) {
-  const isEdit = !!product;
+  const isEdit  = !!product;
+  const qOpts   = TAX_RATES.map(t => `<option value="${t}" ${isEdit && product.tax===t ? 'selected' : ''}>${t}%</option>`).join('');
+  const catOpts = CATEGORIES.map(c => `<option value="${c}" ${isEdit && product.category===c ? 'selected' : ''}>${catOf(c).icon} ${c}</option>`).join('');
+  const unitOpts= UNITS.map(u => `<option value="${u}" ${isEdit && product.unit===u ? 'selected' : ''}>${u}</option>`).join('');
+
+  const expiryVal = isEdit && product.expiryDate
+    ? new Date(product.expiryDate).toISOString().split('T')[0] : '';
+
   createModal({
     id: 'product-form',
     title: isEdit ? '✏️ Edit Product' : '➕ Add New Product',
@@ -168,23 +230,20 @@ function showProductModal(product, onSave) {
       <div class="form-grid">
         <div class="form-group full-width">
           <label class="form-label">Product Name *</label>
-          <input type="text" class="form-input" id="pf-name" value="${isEdit ? product.name : ''}" placeholder="e.g. Full Cream Milk 1L">
+          <input type="text" class="form-input" id="pf-name" value="${isEdit ? escHtml(product.name) : ''}" placeholder="e.g. Full Cream Milk 1L">
         </div>
         <div class="form-group">
           <label class="form-label">Barcode / QR Code</label>
           <div class="input-group">
-            <input type="text" class="form-input" id="pf-barcode" value="${isEdit ? product.barcode || '' : ''}" placeholder="e.g. 8901063045149 — or scan below">
-            <button class="btn btn-secondary" id="pf-scan-barcode-btn" type="button" title="Scan physical barcode to fill this field" style="padding:10px 14px;gap:6px;">
-              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
-              Scan
+            <input type="text" class="form-input" id="pf-barcode" value="${isEdit ? product.barcode||'' : ''}" placeholder="Scan or enter manually">
+            <button class="btn btn-secondary" id="pf-scan-btn" type="button" style="padding:10px 14px;">
+              <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/></svg>
             </button>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Category</label>
-          <select class="form-select" id="pf-category">
-            ${CATEGORIES.map(c => `<option value="${c}" ${isEdit && product.category === c ? 'selected' : ''}>${c}</option>`).join('')}
-          </select>
+          <select class="form-select" id="pf-category">${catOpts}</select>
         </div>
         <div class="form-group">
           <label class="form-label">Selling Price (₹) *</label>
@@ -192,21 +251,35 @@ function showProductModal(product, onSave) {
         </div>
         <div class="form-group">
           <label class="form-label">Cost Price (₹)</label>
-          <input type="number" class="form-input" id="pf-cost" value="${isEdit ? product.costPrice || '' : ''}" placeholder="0.00" min="0" step="0.01">
+          <input type="number" class="form-input" id="pf-cost" value="${isEdit ? product.costPrice||'' : ''}" placeholder="0.00" min="0" step="0.01">
         </div>
         <div class="form-group">
           <label class="form-label">Stock Quantity *</label>
           <input type="number" class="form-input" id="pf-stock" value="${isEdit ? product.stock : ''}" placeholder="0" min="0">
         </div>
         <div class="form-group">
-          <label class="form-label">Low Stock Alert Threshold</label>
-          <input type="number" class="form-input" id="pf-alert" value="${isEdit ? product.alertThreshold || 10 : 10}" placeholder="10" min="0">
+          <label class="form-label">Unit</label>
+          <select class="form-select" id="pf-unit">${unitOpts}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Low Stock Alert At</label>
+          <input type="number" class="form-input" id="pf-alert" value="${isEdit ? product.alertThreshold||10 : 10}" placeholder="10" min="0">
         </div>
         <div class="form-group">
           <label class="form-label">GST Tax Rate</label>
-          <select class="form-select" id="pf-tax">
-            ${TAX_RATES.map(t => `<option value="${t}" ${isEdit && product.tax === t ? 'selected' : ''}>${t}%</option>`).join('')}
-          </select>
+          <select class="form-select" id="pf-tax">${qOpts}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Expiry Date</label>
+          <input type="date" class="form-input" id="pf-expiry" value="${expiryVal}">
+        </div>
+        <div class="form-group full-width">
+          <label class="form-label">Supplier / Vendor</label>
+          <input type="text" class="form-input" id="pf-supplier" value="${isEdit ? escHtml(product.supplier||'') : ''}" placeholder="Supplier name">
+        </div>
+        <div class="form-group full-width">
+          <label class="form-label">Description (optional)</label>
+          <textarea class="form-input form-textarea" id="pf-desc" placeholder="Product notes…" rows="2">${isEdit ? escHtml(product.description||'') : ''}</textarea>
         </div>
       </div>
     `,
@@ -217,46 +290,57 @@ function showProductModal(product, onSave) {
   });
 
   setTimeout(() => {
-    // Scan-to-fill barcode field
-    document.getElementById('pf-scan-barcode-btn')?.addEventListener('click', () => {
+    document.getElementById('pf-scan-btn')?.addEventListener('click', () => {
       openScanner(code => {
-        const input = document.getElementById('pf-barcode');
-        if (input) {
-          input.value = code;
-          input.focus();
-          toast.success(`Barcode scanned: ${code}`);
-        }
+        const inp = document.getElementById('pf-barcode');
+        if (inp) { inp.value = code; toast.success(`Barcode scanned: ${code}`); }
       });
     });
 
+    // Live margin preview
+    const updateMargin = () => {
+      const price = parseFloat(document.getElementById('pf-price')?.value || 0);
+      const cost  = parseFloat(document.getElementById('pf-cost')?.value  || 0);
+      const btn   = document.getElementById('save-product-btn');
+      if (price > 0 && cost > 0 && btn) {
+        const m = Math.round(((price - cost) / price) * 100);
+        btn.title = `Margin: ${m}%`;
+      }
+    };
+    document.getElementById('pf-price')?.addEventListener('input', updateMargin);
+    document.getElementById('pf-cost')?.addEventListener('input', updateMargin);
+
     document.getElementById('save-product-btn')?.addEventListener('click', async () => {
       const name = document.getElementById('pf-name')?.value?.trim();
-      const price = parseFloat(document.getElementById('pf-price')?.value || 0);
-      const stock = parseInt(document.getElementById('pf-stock')?.value || 0);
       if (!name) return toast.warning('Product name is required');
+      const price = parseFloat(document.getElementById('pf-price')?.value || 0);
       if (!price || price <= 0) return toast.warning('Please enter a valid price');
 
       const data = {
         name,
-        barcode: document.getElementById('pf-barcode')?.value?.trim() || '',
-        category: document.getElementById('pf-category')?.value,
+        barcode:        document.getElementById('pf-barcode')?.value?.trim() || '',
+        category:       document.getElementById('pf-category')?.value,
         price,
-        costPrice: parseFloat(document.getElementById('pf-cost')?.value || 0) || 0,
-        stock,
+        costPrice:      parseFloat(document.getElementById('pf-cost')?.value || 0) || 0,
+        stock:          parseInt(document.getElementById('pf-stock')?.value || 0),
+        unit:           document.getElementById('pf-unit')?.value || 'pcs',
         alertThreshold: parseInt(document.getElementById('pf-alert')?.value || 10),
-        tax: parseInt(document.getElementById('pf-tax')?.value || 0),
+        tax:            parseInt(document.getElementById('pf-tax')?.value || 0),
+        expiryDate:     document.getElementById('pf-expiry')?.value || null,
+        supplier:       document.getElementById('pf-supplier')?.value?.trim() || '',
+        description:    document.getElementById('pf-desc')?.value?.trim() || '',
       };
 
-      if (isEdit) {
-        await DB.updateProduct(product.id, data);
-        toast.success('Product updated!');
-      } else {
-        await DB.addProduct(data);
-        toast.success('Product added!');
-      }
-
-      closeModal('product-form');
-      onSave?.();
+      try {
+        if (isEdit) { await DB.updateProduct(product.id, data); toast.success('Product updated!'); }
+        else        { await DB.addProduct(data); toast.success('Product added!'); }
+        closeModal('product-form');
+        onSave?.();
+      } catch (err) { toast.error(err.message); }
     });
   }, 100);
+}
+
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }

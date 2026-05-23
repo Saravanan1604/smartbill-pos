@@ -132,6 +132,24 @@ html[theme="light"] {
 /* Dividers */
 .divider{height:1px;background:var(--glass-border);margin:16px 0;}
 
+/* ===== CATEGORY COLOR TOKENS ===== */
+:root{
+  --cat-grocery:   #10b981; --cat-grocery-bg:   rgba(16,185,129,.12);
+  --cat-dairy:     #06b6d4; --cat-dairy-bg:     rgba(6,182,212,.12);
+  --cat-bakery:    #f59e0b; --cat-bakery-bg:    rgba(245,158,11,.12);
+  --cat-beverages: #3b82f6; --cat-beverages-bg: rgba(59,130,246,.12);
+  --cat-snacks:    #f97316; --cat-snacks-bg:    rgba(249,115,22,.12);
+  --cat-care:      #ec4899; --cat-care-bg:      rgba(236,72,153,.12);
+  --cat-household: #7c3aed; --cat-household-bg: rgba(124,58,237,.12);
+  --cat-stat:      #6366f1; --cat-stat-bg:      rgba(99,102,241,.12);
+  --cat-elec:      #eab308; --cat-elec-bg:      rgba(234,179,8,.12);
+  --cat-clothing:  #f43f5e; --cat-clothing-bg:  rgba(244,63,94,.12);
+  --gradient-rose:   linear-gradient(135deg,#f43f5e,#ec4899);
+  --gradient-blue:   linear-gradient(135deg,#3b82f6,#06b6d4);
+  --gradient-orange: linear-gradient(135deg,#f97316,#eab308);
+  --gradient-pink:   linear-gradient(135deg,#ec4899,#8b5cf6);
+}
+
 /* Responsive */
 @media(max-width:1200px){.grid-4{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:900px){:root{--sidebar-width:0px;}.main-content{margin-left:0;}.sidebar{transform:translateX(-100%);}.sidebar.open{transform:translateX(0);}.page-container{padding:16px;}.grid-3{grid-template-columns:repeat(2,1fr);}}
