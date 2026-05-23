@@ -11,11 +11,25 @@ const DB = {
       const response = await fetch(url, config);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Server error');
-      return data;
+      return this._normalize(data);
     } catch (err) {
       console.error(`API Error [${endpoint}]:`, err.message);
       throw err;
     }
+  },
+
+  // Map MongoDB `_id` → `id` recursively so the whole frontend can use `.id`.
+  // Backend returns Mongoose docs (which serialize `_id` but not `id`).
+  _normalize(data) {
+    if (Array.isArray(data)) return data.map(d => this._normalize(d));
+    if (data && typeof data === 'object') {
+      if (data._id != null && data.id == null) data.id = String(data._id);
+      for (const key of Object.keys(data)) {
+        const val = data[key];
+        if (val && typeof val === 'object') data[key] = this._normalize(val);
+      }
+    }
+    return data;
   },
 
   // ── PRODUCTS ──────────────────────────────────────────────────────────────
