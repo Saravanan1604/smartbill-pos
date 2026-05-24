@@ -121,8 +121,18 @@ export async function renderBilling() {
                 <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            <div class="cart-summary-row" id="tax-row" style="display:none;">
-              <span class="cart-summary-label">Tax (GST)</span>
+            <!-- GST (toggle on/off + editable rate) -->
+            <div class="cart-summary-row" id="tax-row">
+              <span class="cart-summary-label" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+                  <input type="checkbox" id="gst-toggle" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent-violet);">
+                  <span>GST</span>
+                </label>
+                <input type="number" class="form-input" id="gst-rate-input" min="0" max="100" placeholder="auto"
+                  title="Leave blank to use each product's GST rate, or set one rate for the whole bill"
+                  style="max-width:62px;padding:5px 8px;font-size:.78rem;">
+                <span style="font-size:.75rem;color:var(--text-muted);">%</span>
+              </span>
               <span class="cart-summary-value" id="tax-val">₹0.00</span>
             </div>
             <div class="cart-total-row">
@@ -212,18 +222,35 @@ function renderCartItems() {
   `).join('');
 }
 
+// ─── GST calculation (reads the toggle + editable rate from the DOM) ─────────
+// • Toggle off            → tax = 0
+// • Toggle on, rate blank → use each product's own GST rate (per-product)
+// • Toggle on, rate set   → apply that single rate to the whole subtotal
+function computeTax(subtotal, products) {
+  const enabled = document.getElementById('gst-toggle')?.checked;
+  if (!enabled) return 0;
+
+  const rateRaw = document.getElementById('gst-rate-input')?.value ?? '';
+  const rate = parseFloat(rateRaw);
+  if (rateRaw !== '' && !isNaN(rate) && rate >= 0) {
+    return subtotal * rate / 100;
+  }
+  // Fall back to per-product GST rates
+  return cart.reduce((s, i) => {
+    const p = products.find(x => x.id === i.id);
+    return s + (p?.tax ? (i.price * i.qty * p.tax) / 100 : 0);
+  }, 0);
+}
+
 async function updateTotals() {
-  const settings = await cachedSettings();
   const products = await cachedProducts();
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const discType = document.getElementById('discount-type')?.value || 'flat';
   const discVal = parseFloat(document.getElementById('discount-input')?.value || 0) || 0;
   discount = discType === 'pct' ? subtotal * discVal / 100 : discVal;
 
-  const tax = settings.gstEnabled ? cart.reduce((s, i) => {
-    const p = products.find(x => x.id === i.id);
-    return s + (p?.tax ? (i.price * i.qty * p.tax) / 100 : 0);
-  }, 0) : 0;
+  const gstEnabled = document.getElementById('gst-toggle')?.checked;
+  const tax = computeTax(subtotal, products);
 
   const total = subtotal - discount + tax;
 
@@ -235,8 +262,12 @@ async function updateTotals() {
   const cartCount = document.getElementById('cart-count');
   if (cartCount) cartCount.textContent = `${cart.reduce((s, i) => s + i.qty, 0)} items`;
 
-  const taxRow = document.getElementById('tax-row');
-  if (taxRow) taxRow.style.display = settings.gstEnabled ? '' : 'none';
+  // Grey-out the rate input when GST is disabled
+  const rateInput = document.getElementById('gst-rate-input');
+  if (rateInput) {
+    rateInput.disabled = !gstEnabled;
+    rateInput.style.opacity = gstEnabled ? '1' : '.4';
+  }
 
   const checkoutBtn = document.getElementById('checkout-btn');
   if (checkoutBtn) checkoutBtn.disabled = cart.length === 0;
@@ -409,6 +440,16 @@ export async function initBilling() {
   // Discount
   document.getElementById('discount-input')?.addEventListener('input', updateTotals);
   document.getElementById('discount-type')?.addEventListener('change', updateTotals);
+
+  // GST — initialise toggle from shop settings, then recalc on any change
+  const gstToggle = document.getElementById('gst-toggle');
+  if (gstToggle) {
+    const settings = await cachedSettings();
+    gstToggle.checked = settings.gstEnabled !== false; // default ON unless explicitly disabled
+    gstToggle.addEventListener('change', updateTotals);
+  }
+  document.getElementById('gst-rate-input')?.addEventListener('input', updateTotals);
+  await updateTotals(); // reflect initial GST state immediately
 
   // Clear Discount
   document.getElementById('clear-discount-btn')?.addEventListener('click', async () => {
@@ -616,10 +657,7 @@ async function getCartTotals() {
   const discType = document.getElementById('discount-type')?.value || 'flat';
   const discVal = parseFloat(document.getElementById('discount-input')?.value || 0) || 0;
   const disc = discType === 'pct' ? subtotal * discVal / 100 : discVal;
-  const tax = settings.gstEnabled ? cart.reduce((s, i) => {
-    const p = products.find(x => x.id === i.id);
-    return s + (p?.tax ? (i.price * i.qty * p.tax) / 100 : 0);
-  }, 0) : 0;
+  const tax = computeTax(subtotal, products);
   const total = subtotal - disc + tax;
   return { subtotal, discount: disc, tax, total: Math.max(0, total), products, settings };
 }
@@ -683,11 +721,21 @@ async function completeSale(subtotal, disc, tax, total) {
     return sum + (p ? (p.costPrice || p.price * 0.75) * item.qty : 0);
   }, 0);
 
+  // Per-item tax honours the billing GST controls (toggle + optional rate override)
+  const gstOn = document.getElementById('gst-toggle')?.checked;
+  const rateRaw = document.getElementById('gst-rate-input')?.value ?? '';
+  const overrideRate = rateRaw !== '' && !isNaN(parseFloat(rateRaw)) ? parseFloat(rateRaw) : null;
+
   const saleData = {
     items: cart.map(i => {
       const p = products.find(x => x.id === i.id);
-      const taxAmt = settings.gstEnabled && p?.tax ? (i.price * i.qty * p.tax) / 100 : 0;
-      return { ...i, taxAmt, total: i.price * i.qty + taxAmt };
+      const lineBase = i.price * i.qty;
+      let taxAmt = 0;
+      if (gstOn) {
+        const rate = overrideRate !== null ? overrideRate : (p?.tax || 0);
+        taxAmt = lineBase * rate / 100;
+      }
+      return { ...i, taxAmt, total: lineBase + taxAmt };
     }),
     subtotal: s, discount: d, tax: t, total: tot,
     profit: tot - costTotal,
