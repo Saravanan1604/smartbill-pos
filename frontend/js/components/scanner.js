@@ -4,14 +4,20 @@ import toast from './toast.js';
 
 let html5QrCode = null;
 
-export function openScanner(onScan) {
+// openScanner(onScan, options)
+//   options.continuous : keep the camera open and keep scanning (good for
+//                        scan-to-deduct stock). Default false (scan once, close).
+//   options.title      : modal title override.
+export function openScanner(onScan, options = {}) {
+  const { continuous = false, title = '📷 Scan QR / Barcode' } = options;
+
   createModal({
     id: 'scanner',
-    title: '📷 Scan QR / Barcode',
+    title,
     size: '',
     body: `
       <div style="display:flex;flex-direction:column;gap:16px;">
-        <p style="color:var(--text-muted);font-size:.85rem;">Point camera at product QR code or barcode</p>
+        <p style="color:var(--text-muted);font-size:.85rem;">${continuous ? 'Show each product\'s barcode to the camera — stock is deducted automatically.' : 'Point camera at product QR code or barcode'}</p>
         <div class="scanner-wrapper" id="scanner-box" style="min-height:300px;">
           <div id="scanner-status" class="scanner-status">
             <div class="scanner-status-icon">
@@ -30,32 +36,43 @@ export function openScanner(onScan) {
             <div class="scanner-scan-line"></div>
           </div>
         </div>
+        ${continuous ? `<div id="scanner-log" style="display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;font-size:.8rem;"></div>` : ''}
         <div style="display:flex;flex-direction:column;gap:8px;">
           <p style="font-size:.8rem;color:var(--text-muted);text-align:center;">— or enter barcode manually —</p>
           <div class="input-group">
             <input type="text" id="manual-barcode" class="form-input" placeholder="Enter barcode / QR code..." autofocus>
-            <button class="btn btn-primary" id="manual-scan-btn">Add</button>
+            <button class="btn btn-primary" id="manual-scan-btn">${continuous ? 'Deduct' : 'Add'}</button>
           </div>
         </div>
+        ${continuous ? `<button class="btn btn-secondary" id="scanner-done-btn" style="width:100%;">✓ Done</button>` : ''}
       </div>
     `,
     onClose: stopScanner
   });
 
-  setTimeout(() => startScanner(onScan), 300);
+  setTimeout(() => startScanner(onScan, continuous), 300);
 
   document.getElementById('manual-scan-btn')?.addEventListener('click', () => {
-    const val = document.getElementById('manual-barcode')?.value?.trim();
-    if (val) { onScan(val); closeModal('scanner'); }
-    else toast.warning('Please enter a barcode');
+    const input = document.getElementById('manual-barcode');
+    const val = input?.value?.trim();
+    if (!val) { toast.warning('Please enter a barcode'); return; }
+    if (continuous) {
+      onScan(val);
+      if (input) { input.value = ''; input.focus(); }
+    } else {
+      onScan(val);
+      closeModal('scanner');
+    }
   });
 
   document.getElementById('manual-barcode')?.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('manual-scan-btn')?.click();
   });
+
+  document.getElementById('scanner-done-btn')?.addEventListener('click', () => closeModal('scanner'));
 }
 
-function startScanner(onScan) {
+function startScanner(onScan, continuous = false) {
   const box = document.getElementById('scanner-box');
   if (!box || !window.Html5Qrcode) {
     document.getElementById('scanner-status')?.querySelector('p')?.setText?.('Camera not available. Use manual entry.');
@@ -68,9 +85,16 @@ function startScanner(onScan) {
       { facingMode: 'environment' },
       { fps: 10, qrbox: { width: 220, height: 180 }, aspectRatio: 1.2 },
       (decodedText) => {
-        stopScanner();
-        onScan(decodedText);
-        closeModal('scanner');
+        if (continuous) {
+          // Keep scanning: pause briefly to avoid duplicate reads of the same code
+          try { html5QrCode.pause(true); } catch {}
+          onScan(decodedText);
+          setTimeout(() => { try { html5QrCode?.resume(); } catch {} }, 1300);
+        } else {
+          stopScanner();
+          onScan(decodedText);
+          closeModal('scanner');
+        }
       },
       (err) => {}
     ).catch(err => {

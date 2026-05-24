@@ -37,6 +37,15 @@ export async function renderProducts() {
           <p>${products.length} products in inventory</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-success" id="scan-deduct-btn" title="Show products to the camera to auto-deduct stock">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            Scan to Deduct
+          </button>
+          <button class="btn btn-secondary" id="import-products-btn" title="Import products from a CSV file">
+            <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            Import CSV
+          </button>
+          <input type="file" id="import-file-input" accept=".csv,text/csv" style="display:none;">
           <button class="btn btn-secondary" id="export-products-btn">
             <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
             Export CSV
@@ -180,6 +189,26 @@ export function initProducts() {
       download: 'smartbill-products.csv'
     });
     a.click(); toast.success('Products exported!');
+  });
+
+  // ── Import CSV ──────────────────────────────────────────────────────────────
+  document.getElementById('import-products-btn')?.addEventListener('click', () => {
+    document.getElementById('import-file-input')?.click();
+  });
+
+  document.getElementById('import-file-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ''; // allow re-selecting the same file later
+    const text = await file.text();
+    await importProductsFromCSV(text, refreshGrid);
+  });
+
+  // ── Scan to Deduct (camera) ───────────────────────────────────────────────
+  document.getElementById('scan-deduct-btn')?.addEventListener('click', () => {
+    openScanner(async (barcode) => {
+      await deductByBarcode(barcode, refreshGrid);
+    }, { continuous: true, title: '📷 Scan to Deduct Stock' });
   });
 
   window.editProduct = async (id) => {
@@ -339,6 +368,115 @@ function showProductModal(product, onSave) {
       } catch (err) { toast.error(err.message); }
     });
   }, 100);
+}
+
+// ─── Deduct one unit of a product by its scanned barcode ─────────────────────
+async function deductByBarcode(barcode, onDone) {
+  const code = String(barcode).trim();
+  const products = await DB.getProducts();
+  const p = products.find(x => x.barcode && String(x.barcode) === code);
+
+  const log = document.getElementById('scanner-log');
+  const addLog = (html) => { if (log) log.insertAdjacentHTML('afterbegin', html); };
+
+  if (!p) {
+    toast.warning(`No product with barcode ${code}`);
+    addLog(`<div style="color:var(--danger);">❌ ${code} — not found</div>`);
+    return;
+  }
+  if (p.stock <= 0) {
+    toast.warning(`${p.name} is already out of stock`);
+    addLog(`<div style="color:var(--warning);">⚠️ ${p.name} — out of stock</div>`);
+    return;
+  }
+  try {
+    const updated = await DB.adjustStock(p.id, { delta: -1 });
+    toast.success(`${p.name} − 1 → ${updated.stock} left`);
+    addLog(`<div style="color:var(--success);">✓ ${p.name} → ${updated.stock} left</div>`);
+    onDone?.();
+  } catch (err) {
+    toast.error(err.message || 'Failed to update stock');
+  }
+}
+
+// ─── Parse a single CSV line (handles quoted fields with commas) ─────────────
+function parseCSVLine(line) {
+  const out = [];
+  let cur = '', inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cur += ch;
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ',') { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map(s => s.trim());
+}
+
+// ─── Import products from CSV text ────────────────────────────────────────────
+// Recognised columns (case-insensitive, any order):
+//   Name, Barcode, Category, Unit, Supplier, Price, Cost Price, Stock,
+//   Alert Threshold, Tax%, Expiry. Existing items (matched by barcode, else
+//   name) are updated; new items are added.
+async function importProductsFromCSV(text, onDone) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+  if (lines.length < 2) { toast.error('CSV is empty or has no data rows'); return; }
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/%/g, '').trim());
+  const col = (row, ...names) => {
+    for (const n of names) {
+      const idx = headers.indexOf(n);
+      if (idx !== -1 && row[idx] !== undefined && row[idx] !== '') return row[idx];
+    }
+    return '';
+  };
+
+  const existing = await DB.getProducts();
+  const byBarcode = new Map(existing.filter(p => p.barcode).map(p => [String(p.barcode), p]));
+  const byName    = new Map(existing.map(p => [p.name.toLowerCase(), p]));
+
+  let added = 0, updated = 0, failed = 0;
+  toast.info('Importing… please wait');
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseCSVLine(lines[i]);
+    const name = col(row, 'name');
+    if (!name) { failed++; continue; }
+
+    const barcode = col(row, 'barcode');
+    const data = {
+      name,
+      barcode: barcode || '',
+      category:       col(row, 'category') || 'Other',
+      unit:           col(row, 'unit') || 'pcs',
+      supplier:       col(row, 'supplier'),
+      price:          parseFloat(col(row, 'price')) || 0,
+      costPrice:      parseFloat(col(row, 'cost price', 'cost')) || 0,
+      stock:          parseInt(col(row, 'stock')) || 0,
+      alertThreshold: parseInt(col(row, 'alert threshold', 'alert')) || 10,
+      tax:            parseFloat(col(row, 'tax', 'gst')) || 0,
+    };
+    const expiry = col(row, 'expiry', 'expiry date');
+    if (expiry) { const d = new Date(expiry); if (!isNaN(d)) data.expiryDate = d.toISOString(); }
+
+    const match = (barcode && byBarcode.get(String(barcode))) || byName.get(name.toLowerCase());
+    try {
+      if (match) { await DB.updateProduct(match.id, data); updated++; }
+      else       { await DB.addProduct(data); added++; }
+    } catch (err) {
+      console.warn('Import row failed:', name, err.message);
+      failed++;
+    }
+  }
+
+  toast.success(`Import done — ${added} added, ${updated} updated${failed ? `, ${failed} skipped` : ''}`);
+  onDone?.();
 }
 
 function escHtml(str) {
