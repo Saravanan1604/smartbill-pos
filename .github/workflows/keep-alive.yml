@@ -1,0 +1,31 @@
+name: Keep Backend Awake
+
+# Pings the Render backend so its free tier never goes to sleep,
+# which removes the 30-60s cold-start delay on the first page load.
+on:
+  schedule:
+    # Every 10 minutes (Render sleeps after ~15 min idle).
+    # Times are UTC. GitHub may delay scheduled runs by a few minutes
+    # under load, so 10 min gives a safe margin under the 15 min window.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          echo "Pinging backend at $(date -u)"
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://smartbill-backend-al6t.onrender.com/ || echo "000")
+            echo "Attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              echo "Backend is awake."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Backend did not return 200 after retries (it may still be waking up)."
+          # Do not fail the workflow on a cold start; the ping itself triggers the wake-up.
+          exit 0
