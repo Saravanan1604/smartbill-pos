@@ -67,6 +67,15 @@ const DB = {
   getUsers()             { return this.request('/api/auth/users'); },
   deleteUser(id)         { return this.request(`/api/auth/users/${id}`, { method:'DELETE' }); },
 
+  // ── PLATFORM (super-admin only) ───────────────────────────────────────────
+  getPlatformStats()             { return this.request('/api/platform/stats'); },
+  getPlatformShops(query = '')   { return this.request('/api/platform/shops' + (query ? `?${query}` : '')); },
+  getPlatformShop(id)            { return this.request(`/api/platform/shops/${id}`); },
+  getPlatformPlans()             { return this.request('/api/platform/plans'); },
+  updateShopSubscription(id, body) {
+    return this.request(`/api/platform/shops/${id}/subscription`, { method: 'POST', body: JSON.stringify(body) });
+  },
+
   // ── ANALYTICS ─────────────────────────────────────────────────────────────
   getDashboardStats()      { return this.request('/api/analytics/dashboard'); },
   getLast7DaysSales()      { return this.request('/api/analytics/sales-trend'); },

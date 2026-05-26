@@ -14,6 +14,7 @@ import { renderInventory, initInventory } from './pages/inventory.js';
 import { renderReports,  initReports  } from './pages/reports.js';
 import { renderCustomers, initCustomers } from './pages/customers.js';
 import { renderSettings, initSettings } from './pages/settings.js';
+import { renderPlatform, initPlatform } from './pages/platform.js';
 
 // Base API configuration - change this URL to your production Render URL after deploying the backend
 window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -47,9 +48,26 @@ async function navigate(hash) {
     document.removeEventListener('keydown', window._billingKeyHandler);
     window._billingKeyHandler = null;
   }
-  const route = ROUTES[hash] || ROUTES['#dashboard'];
   const app = document.getElementById('app');
   if (!app) return;
+
+  // ── Platform owner console (super-admin only, separate from the shop app) ──
+  const isSuperAdmin = Auth.isLoggedIn() && Auth.getRole() === 'superadmin';
+  if (hash === '#platform') {
+    if (!Auth.isLoggedIn()) { window.location.hash = '#login'; return; }
+    if (!isSuperAdmin)      { window.location.hash = '#dashboard'; return; }
+    hideAssistant();
+    app.innerHTML = await renderPlatform();
+    await initPlatform();
+    return;
+  }
+  // A super-admin anywhere else is sent to their console
+  if (isSuperAdmin && hash !== '#login') {
+    window.location.hash = '#platform';
+    return;
+  }
+
+  const route = ROUTES[hash] || ROUTES['#dashboard'];
 
   // Auth guard
   if (!route.public && !Auth.isLoggedIn()) {
@@ -59,7 +77,7 @@ async function navigate(hash) {
 
   // Redirect logged-in users away from login
   if (hash === '#login' && Auth.isLoggedIn()) {
-    window.location.hash = '#dashboard';
+    window.location.hash = isSuperAdmin ? '#platform' : '#dashboard';
     return;
   }
 

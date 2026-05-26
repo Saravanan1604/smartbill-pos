@@ -269,7 +269,8 @@ async function handleSignIn() {
 
   if (result.ok) {
     toast.success(`Welcome back, ${user}! 🎉`);
-    setTimeout(() => window.location.hash = '#dashboard', 400);
+    const dest = result.session?.role === 'superadmin' ? '#platform' : '#dashboard';
+    setTimeout(() => window.location.hash = dest, 400);
   } else if (result.error === 'TIMEOUT') {
     toast.warning('Server is still starting up. Please wait 10 more seconds and try again.');
     setLoading(btn, false, `🔄 Try Again`);
