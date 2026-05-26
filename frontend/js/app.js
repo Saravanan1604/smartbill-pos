@@ -129,9 +129,9 @@ async function navigate(hash) {
               <svg id="theme-icon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"></svg>
             </button>
             
-            <!-- Language Switcher -->
-            <button class="btn btn-ghost" id="lang-toggle-btn" style="padding:0 8px;font-size:0.8rem;font-weight:600;margin-right:4px;" data-tooltip="Language / மொழி">
-              ${currentLang === 'en' ? 'தமிழ் 🇮🇳' : 'English 🇬🇧'}
+            <!-- Language Switcher (English → தமிழ் → हिन्दी) -->
+            <button class="btn btn-ghost" id="lang-toggle-btn" style="padding:0 8px;font-size:0.8rem;font-weight:600;margin-right:4px;" data-tooltip="Language / மொழி / भाषा">
+              ${currentLang === 'en' ? 'தமிழ் 🇮🇳' : currentLang === 'ta' ? 'हिन्दी 🇮🇳' : 'English 🇬🇧'}
             </button>
 
             <!-- Quick Billing -->
@@ -185,11 +185,11 @@ async function navigate(hash) {
   const langToggle = document.getElementById('lang-toggle-btn');
   if (langToggle) {
     langToggle.addEventListener('click', async () => {
-      const { getLang, setLang } = await import('./utils/i18n.js');
-      const current = getLang();
-      const next = current === 'en' ? 'ta' : 'en';
+      const { getLang, setLang, nextLang } = await import('./utils/i18n.js');
+      const next = nextLang(getLang());
       setLang(next);
-      toast.success(next === 'ta' ? 'தமிழ் மொழி மாற்றப்பட்டது!' : 'Language switched to English!');
+      const msg = { en: 'Language switched to English!', ta: 'தமிழ் மொழி மாற்றப்பட்டது!', hi: 'भाषा हिन्दी में बदल गई!' };
+      toast.success(msg[next] || msg.en);
       setTimeout(() => window.location.reload(), 800);
     });
   }

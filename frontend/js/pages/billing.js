@@ -39,13 +39,13 @@ export async function renderBilling() {
     <div class="page-container" style="padding-bottom:0;">
       <div class="page-header">
         <div class="page-header-left">
-          <h1>Billing / POS</h1>
-          <p>Scan products or search to add to cart</p>
+          <h1>${window.t('billing_title')}</h1>
+          <p>${window.t('billing_sub')}</p>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           ${heldBill ? `<button class="btn btn-amber btn-sm" id="resume-btn" title="Resume held bill (${heldBill.cart?.length || 0} items from ${heldBill.savedAt || 'earlier'})">▶ Resume${heldBill.cart?.length ? ` (${heldBill.cart.length})` : ''}</button>` : ''}
-          <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill (save for later)">⏸ Hold</button>
-          <button class="btn btn-secondary btn-sm" id="clear-cart-btn">🗑 Clear</button>
+          <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill (save for later)">${window.t('hold_bill')}</button>
+          <button class="btn btn-secondary btn-sm" id="clear-cart-btn">${window.t('clear_cart')}</button>
         </div>
       </div>
     </div>
@@ -58,11 +58,11 @@ export async function renderBilling() {
           <div class="billing-search-bar">
             <div class="search-bar" style="flex:1;">
               <svg class="search-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              <input type="text" class="form-input" id="product-search" placeholder="Search products… (press / to focus)" style="padding-left:38px;">
+              <input type="text" class="form-input" id="product-search" placeholder="${window.t('search_products')}" style="padding-left:38px;">
             </div>
             <button class="scanner-trigger" id="scan-btn">
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
-              Scan QR
+              ${window.t('scan_qr')}
             </button>
           </div>
 
@@ -83,8 +83,8 @@ export async function renderBilling() {
         <div class="billing-right">
           <div class="cart-header">
             <div>
-              <div class="cart-title">🛒 Cart</div>
-              <div class="cart-count" id="cart-count">0 items</div>
+              <div class="cart-title">${window.t('shopping_cart')}</div>
+              <div class="cart-count" id="cart-count">0 ${window.t('items')}</div>
             </div>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-ghost btn-icon-sm" id="add-customer-btn" data-tooltip="Add Customer">
@@ -99,19 +99,19 @@ export async function renderBilling() {
           <div class="cart-items" id="cart-items">
             <div class="empty-state" id="cart-empty">
               <div class="empty-state-icon">🛒</div>
-              <h3>Cart is empty</h3>
-              <p>Click products or scan QR to add items</p>
+              <h3>${window.t('cart_empty')}</h3>
+              <p>${window.t('cart_empty_sub')}</p>
             </div>
           </div>
           <div class="cart-footer">
             <!-- Summary -->
             <div class="cart-summary-row">
-              <span class="cart-summary-label">Subtotal</span>
+              <span class="cart-summary-label">${window.t('subtotal')}</span>
               <span class="cart-summary-value" id="subtotal-val">₹0.00</span>
             </div>
             <!-- Discount -->
             <div class="discount-row">
-              <span class="cart-summary-label" style="flex-shrink:0;">Discount</span>
+              <span class="cart-summary-label" style="flex-shrink:0;">${window.t('discount')}</span>
               <input type="number" class="form-input" id="discount-input" min="0" placeholder="0" style="max-width:80px;padding:6px 10px;font-size:.8rem;">
               <select class="form-select" id="discount-type" style="max-width:70px;padding:6px 10px;font-size:.8rem;">
                 <option value="flat">₹</option>
@@ -136,23 +136,23 @@ export async function renderBilling() {
               <span class="cart-summary-value" id="tax-val">₹0.00</span>
             </div>
             <div class="cart-total-row">
-              <span class="cart-total-label">TOTAL</span>
+              <span class="cart-total-label">${window.t('total')}</span>
               <span class="cart-total-value" id="total-val">₹0.00</span>
             </div>
             <!-- Payment Method -->
             <div style="margin-top:4px;">
-              <div class="cart-summary-label" style="margin-bottom:6px;">Payment Method</div>
+              <div class="cart-summary-label" style="margin-bottom:6px;">${window.t('payment_method')}</div>
               <div class="payment-methods">
-                <button class="payment-method-btn active" data-pay="Cash">💵<span>Cash</span></button>
-                <button class="payment-method-btn" data-pay="UPI">📱<span>UPI</span></button>
-                <button class="payment-method-btn" data-pay="Card">💳<span>Card</span></button>
+                <button class="payment-method-btn active" data-pay="Cash">💵<span>${window.t('cash')}</span></button>
+                <button class="payment-method-btn" data-pay="UPI">📱<span>${window.t('upi')}</span></button>
+                <button class="payment-method-btn" data-pay="Card">💳<span>${window.t('card')}</span></button>
               </div>
             </div>
             <!-- Actions -->
             <div class="cart-actions" style="margin-top:8px;">
               <button class="btn btn-success btn-lg" id="checkout-btn" disabled style="width:100%;" title="Checkout (F9)">
                 <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Checkout &amp; Generate Bill
+                ${window.t('checkout_btn')}
                 <span style="opacity:.6;font-size:.7rem;font-weight:400;font-family:'JetBrains Mono',monospace;">[F9]</span>
               </button>
             </div>
@@ -197,8 +197,8 @@ function renderCartItems() {
     cartEl.innerHTML = `
       <div class="empty-state" id="cart-empty">
         <div class="empty-state-icon">🛒</div>
-        <h3>Cart is empty</h3>
-        <p>Click products or scan QR to add items</p>
+        <h3>${window.t('cart_empty')}</h3>
+        <p>${window.t('cart_empty_sub')}</p>
       </div>`;
     return;
   }
@@ -260,7 +260,7 @@ async function updateTotals() {
   set('tax-val', formatCurrency(tax));
 
   const cartCount = document.getElementById('cart-count');
-  if (cartCount) cartCount.textContent = `${cart.reduce((s, i) => s + i.qty, 0)} items`;
+  if (cartCount) cartCount.textContent = `${cart.reduce((s, i) => s + i.qty, 0)} ${window.t('items')}`;
 
   // Grey-out the rate input when GST is disabled
   const rateInput = document.getElementById('gst-rate-input');
