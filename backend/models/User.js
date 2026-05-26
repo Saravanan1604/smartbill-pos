@@ -13,8 +13,15 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'owner', 'employee', 'staff'],  // staff kept for backward compat
+    // 'superadmin' = platform owner (you), belongs to no shop.
+    enum: ['superadmin', 'admin', 'owner', 'employee', 'staff'],  // staff kept for backward compat
     default: 'employee'
+  },
+  // Tenant this user belongs to (null for the platform super-admin).
+  shopId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Shop',
+    default: null
   },
   // Security question/answer for self-service password reset
   securityQuestion: {

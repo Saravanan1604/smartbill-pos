@@ -8,7 +8,7 @@ const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'smartbill_super_secret_jwt_key_2026';
 
 const generateToken = (user) =>
-  jwt.sign({ id: user._id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+  jwt.sign({ id: user._id, username: user.username, role: user.role, shopId: user.shopId || null }, JWT_SECRET, { expiresIn: '30d' });
 
 // ─── Setup status (is this a fresh install with no users?) ──────────────────
 router.get('/setup-status', async (req, res) => {
@@ -109,7 +109,7 @@ router.post('/login', async (req, res) => {
     res.json({
       message: 'Login successful',
       token,
-      user: { id: user._id, username: user.username, role: user.role }
+      user: { id: user._id, username: user.username, role: user.role, shopId: user.shopId || null }
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });

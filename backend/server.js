@@ -24,6 +24,7 @@ import customerRoutes from './routes/customers.js';
 import salesRoutes from './routes/sales.js';
 import settingsRoutes from './routes/settings.js';
 import analyticsRoutes from './routes/analytics.js';
+import platformRoutes from './routes/platform.js';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/platform', platformRoutes);   // platform owner (super-admin) only
 
 // Base route for status checks
 app.get('/', (req, res) => {
@@ -136,6 +138,26 @@ async function seedDatabase() {
     const migrated = await User.updateMany({ role: 'staff' }, { $set: { role: 'employee' } });
     if (migrated.modifiedCount > 0) {
       console.log(`✅ ${migrated.modifiedCount} legacy staff account(s) migrated → employee`);
+    }
+
+    // ── 2b. Seed the PLATFORM OWNER (super-admin) from env vars ─────────────
+    // Set SUPERADMIN_USERNAME and SUPERADMIN_PASSWORD on Render to enable the
+    // platform owner console. No hardcoded backdoor is created.
+    const saUser = (process.env.SUPERADMIN_USERNAME || '').trim().toLowerCase();
+    const saPass = process.env.SUPERADMIN_PASSWORD || '';
+    if (saUser && saPass) {
+      let sa = await User.findOne({ username: saUser });
+      const salt = await bcrypt.genSalt(10);
+      const hash = await bcrypt.hash(saPass, salt);
+      if (!sa) {
+        await new User({ username: saUser, password: hash, role: 'superadmin', shopId: null }).save();
+        console.log(`✅ Platform super-admin created (${saUser})`);
+      } else if (sa.role !== 'superadmin') {
+        sa.role = 'superadmin'; sa.shopId = null; sa.password = hash; await sa.save();
+        console.log(`✅ Existing user "${saUser}" promoted to super-admin`);
+      }
+    } else {
+      console.log('ℹ️ SUPERADMIN_USERNAME / SUPERADMIN_PASSWORD not set — platform console disabled until configured.');
     }
 
     // 3. Seed Settings
