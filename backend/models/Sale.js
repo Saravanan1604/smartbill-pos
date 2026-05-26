@@ -1,9 +1,10 @@
 import mongoose from 'mongoose';
 
 const saleItemSchema = new mongoose.Schema({
+  // Stored as a string: a product's id, OR a 'quick-...' id for one-off items
+  // that aren't catalogue products.
   id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product',
+    type: String,
     required: true
   },
   name: {
@@ -31,10 +32,11 @@ const saleItemSchema = new mongoose.Schema({
 });
 
 const saleSchema = new mongoose.Schema({
+  shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', index: true },
+  // Unique PER SHOP (compound index below), so each shop has its own INV0001…
   invoiceNo: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   items: [saleItemSchema],
   subtotal: {
@@ -74,6 +76,9 @@ const saleSchema = new mongoose.Schema({
     required: true // Format YYYY-MM-DD
   }
 }, { timestamps: true });
+
+saleSchema.index({ shopId: 1, invoiceNo: 1 }, { unique: true });
+saleSchema.index({ shopId: 1, date: 1 });
 
 const Sale = mongoose.model('Sale', saleSchema);
 export default Sale;

@@ -2,6 +2,9 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import Shop from '../models/Shop.js';
+import Subscription from '../models/Subscription.js';
+import { TRIAL_DAYS } from '../config/plans.js';
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
@@ -29,27 +32,26 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const userCount = await User.countDocuments();
-    let finalRole = role || 'staff';
+    // Determine context: authenticated admin adds staff to THEIR shop;
+    // otherwise this is a brand-new business signup (creates its own shop).
+    let finalRole;
+    let shopId = null;
+    let isNewShop = false;
 
-    if (userCount === 0) {
-      // First-ever user → force admin, no auth needed
-      finalRole = 'admin';
+    const authHeader = req.headers.authorization;
+    let decoded = null;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try { decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET); } catch { decoded = null; }
+    }
+
+    if (decoded && decoded.role === 'admin' && decoded.shopId) {
+      // Admin creating a staff/owner account inside their own shop
+      finalRole = ['owner', 'employee'].includes(role) ? role : 'employee';
+      shopId = decoded.shopId;
     } else {
-      // Any subsequent user → must be an authenticated admin
-      const authHeader = req.headers.authorization;
-      if (!authHeader) {
-        return res.status(401).json({ error: 'Only admins can create new accounts.' });
-      }
-      try {
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-        if (decoded.role !== 'admin') {
-          return res.status(403).json({ error: 'Access denied. Only admin users can create accounts.' });
-        }
-      } catch {
-        return res.status(401).json({ error: 'Unauthorized.' });
-      }
+      // New business signup → create a fresh shop, this user becomes its admin
+      finalRole = 'admin';
+      isNewShop = true;
     }
 
     const existingUser = await User.findOne({ username: username.toLowerCase() });
@@ -60,27 +62,47 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Hash security answer if provided
     let hashedAnswer = '';
     if (securityAnswer && securityAnswer.trim()) {
       hashedAnswer = await bcrypt.hash(securityAnswer.trim().toLowerCase(), salt);
+    }
+
+    // Create the shop first for new signups
+    let shop = null;
+    if (isNewShop) {
+      shop = new Shop({ name: (req.body.shopName || `${username}'s Shop`).trim() });
+      await shop.save();
+      shopId = shop._id;
     }
 
     const newUser = new User({
       username: username.toLowerCase(),
       password: hashedPassword,
       role: finalRole,
+      shopId,
       securityQuestion: securityQuestion || '',
       securityAnswer: hashedAnswer
     });
-
     await newUser.save();
-    const token = generateToken(newUser);
 
+    // For a new shop: link owner + start a 14-day trial subscription
+    if (isNewShop) {
+      shop.ownerUserId = newUser._id;
+      await shop.save();
+      const trialEnds = new Date();
+      trialEnds.setDate(trialEnds.getDate() + TRIAL_DAYS);
+      await new Subscription({
+        shopId, plan: 'free', status: 'trial',
+        trialEndsAt: trialEnds, currentPeriodEnd: trialEnds,
+        provider: 'manual',
+      }).save();
+    }
+
+    const token = generateToken(newUser);
     res.status(201).json({
       message: 'Account created successfully!',
       token,
-      user: { id: newUser._id, username: newUser.username, role: newUser.role }
+      user: { id: newUser._id, username: newUser.username, role: newUser.role, shopId: newUser.shopId }
     });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -205,7 +227,8 @@ router.put('/update', authMiddleware, async (req, res) => {
 router.get('/users', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-    const users = await User.find({}, 'username role createdAt').sort({ createdAt: 1 });
+    const shopId = req.user.shopId || (await User.findById(req.user.id).select('shopId'))?.shopId;
+    const users = await User.find({ shopId, role: { $ne: 'superadmin' } }, 'username role createdAt').sort({ createdAt: 1 });
     res.json(users);
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -217,7 +240,8 @@ router.delete('/users/:id', authMiddleware, async (req, res) => {
   try {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
     if (req.params.id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
-    const user = await User.findById(req.params.id);
+    const shopId = req.user.shopId || (await User.findById(req.user.id).select('shopId'))?.shopId;
+    const user = await User.findOne({ _id: req.params.id, shopId });
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (user.role === 'admin') return res.status(400).json({ error: 'Cannot delete another admin account' });
     await user.deleteOne();

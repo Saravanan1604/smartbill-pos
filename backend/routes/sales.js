@@ -1,18 +1,20 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import Customer from '../models/Customer.js';
 import authMiddleware from '../middleware/auth.js';
+import tenant from '../middleware/tenant.js';
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, tenant);
 
 const POINTS_PER_RUPEE = 0.1; // 1 point per ₹10 spent
 
 // ─── Get all sales ────────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const sales = await Sale.find().sort({ createdAt: -1 });
+    const sales = await Sale.find({ shopId: req.shopId }).sort({ createdAt: -1 });
     res.json(sales);
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -29,25 +31,25 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Items, total, and payment method are required.' });
     }
 
-    // 1. Invoice number (sequential, unique)
-    const salesCount = await Sale.countDocuments();
+    // 1. Invoice number (sequential, unique PER SHOP)
+    const salesCount = await Sale.countDocuments({ shopId: req.shopId });
     let invoiceNo = 'INV' + String(salesCount + 1).padStart(4, '0');
     let isUnique = false, attempts = 0;
     while (!isUnique && attempts < 10) {
-      const existing = await Sale.findOne({ invoiceNo });
+      const existing = await Sale.findOne({ shopId: req.shopId, invoiceNo });
       if (existing) invoiceNo = 'INV' + String(salesCount + 1 + (++attempts)).padStart(4, '0');
       else isUnique = true;
     }
 
-    // 2. Compute cost + decrement stock
+    // 2. Compute cost + decrement stock (skip 'quick-' / non-product items)
     let costTotal = 0;
     for (const item of items) {
-      const prod = await Product.findById(item.id);
+      const isRealProduct = mongoose.Types.ObjectId.isValid(item.id);
+      const prod = isRealProduct ? await Product.findOne({ _id: item.id, shopId: req.shopId }) : null;
       if (prod) {
         costTotal += (prod.costPrice || 0) * item.qty;
-        await Product.findByIdAndUpdate(item.id, {
-          $set: { stock: Math.max(0, (prod.stock || 0) - item.qty) }
-        });
+        prod.stock = Math.max(0, (prod.stock || 0) - item.qty);
+        await prod.save();
       } else {
         costTotal += item.price * 0.8 * item.qty;
       }
@@ -56,6 +58,7 @@ router.post('/', async (req, res) => {
 
     // 3. Save sale
     const newSale = new Sale({
+      shopId: req.shopId,
       invoiceNo, items,
       subtotal: parseFloat(subtotal), tax: parseFloat(tax) || 0,
       discount: parseFloat(discount) || 0, total: parseFloat(total),
@@ -65,11 +68,11 @@ router.post('/', async (req, res) => {
     });
     await newSale.save();
 
-    // 4. Update customer — totalSpent, visitCount, loyalty points
+    // 4. Update customer — totalSpent, visitCount, loyalty points (scoped)
     if (customerId) {
       const pointsEarned = Math.floor(parseFloat(total) * POINTS_PER_RUPEE);
       const redeem = Math.max(0, parseInt(pointsRedeemed) || 0);
-      await Customer.findByIdAndUpdate(customerId, {
+      await Customer.findOneAndUpdate({ _id: customerId, shopId: req.shopId }, {
         $inc: {
           totalSpent:    parseFloat(total),
           visitCount:    1,

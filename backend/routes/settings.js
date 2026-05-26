@@ -4,20 +4,21 @@ import Product from '../models/Product.js';
 import Sale from '../models/Sale.js';
 import Customer from '../models/Customer.js';
 import authMiddleware from '../middleware/auth.js';
+import tenant from '../middleware/tenant.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
 
-// Apply auth middleware to all settings routes
-router.use(authMiddleware);
+// Scope all settings routes to the logged-in user's shop
+router.use(authMiddleware, tenant);
 
 // Get current settings (returns defaults if none exist)
 router.get('/', async (req, res) => {
   try {
-    let settings = await Settings.findOne();
+    let settings = await Settings.findOne({ shopId: req.shopId });
     if (!settings) {
-      // Create default settings document
-      settings = new Settings();
+      // Create default settings document for this shop
+      settings = new Settings({ shopId: req.shopId });
       await settings.save();
     }
     res.json(settings);
@@ -31,9 +32,9 @@ router.post('/', async (req, res) => {
   try {
     const { shopName, address, phone, gstin, gstEnabled, gstRate, currency } = req.body;
 
-    let settings = await Settings.findOne();
+    let settings = await Settings.findOne({ shopId: req.shopId });
     if (!settings) {
-      settings = new Settings();
+      settings = new Settings({ shopId: req.shopId });
     }
 
     if (shopName !== undefined) settings.shopName = shopName;
@@ -54,15 +55,16 @@ router.post('/', async (req, res) => {
 // Clear all data (Admin-only or all logged in users, we'll allow all auth users here)
 router.post('/clear-data', async (req, res) => {
   try {
-    await Product.deleteMany({});
-    await Sale.deleteMany({});
-    await Customer.deleteMany({});
-    await Settings.deleteMany({});
-    
-    // Create new default settings
-    const settings = new Settings();
+    // Only clear THIS shop's data — never other tenants'.
+    await Product.deleteMany({ shopId: req.shopId });
+    await Sale.deleteMany({ shopId: req.shopId });
+    await Customer.deleteMany({ shopId: req.shopId });
+    await Settings.deleteMany({ shopId: req.shopId });
+
+    // Recreate default settings for this shop
+    const settings = new Settings({ shopId: req.shopId });
     await settings.save();
-    
+
     res.json({ message: 'All database records cleared successfully' });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -76,9 +78,9 @@ router.post('/import-data', async (req, res) => {
 
     // 1. Import Settings
     if (settings) {
-      let existingSettings = await Settings.findOne();
+      let existingSettings = await Settings.findOne({ shopId: req.shopId });
       if (!existingSettings) {
-        existingSettings = new Settings();
+        existingSettings = new Settings({ shopId: req.shopId });
       }
       if (settings.shopName !== undefined) existingSettings.shopName = settings.shopName;
       if (settings.address !== undefined) existingSettings.address = settings.address;
@@ -99,9 +101,9 @@ router.post('/import-data', async (req, res) => {
       for (const prod of products) {
         let savedProd;
         if (prod.barcode) {
-          savedProd = await Product.findOne({ barcode: prod.barcode.toString().trim() });
+          savedProd = await Product.findOne({ shopId: req.shopId, barcode: prod.barcode.toString().trim() });
         }
-        
+
         if (savedProd) {
           // Merge details
           savedProd.name = prod.name || savedProd.name;
@@ -115,6 +117,7 @@ router.post('/import-data', async (req, res) => {
         } else {
           // Insert new product
           savedProd = new Product({
+            shopId: req.shopId,
             name: prod.name,
             barcode: prod.barcode ? prod.barcode.toString().trim() : undefined,
             price: parseFloat(prod.price) || 0,
@@ -138,7 +141,7 @@ router.post('/import-data', async (req, res) => {
       for (const cust of customers) {
         let savedCust;
         if (cust.phone) {
-          savedCust = await Customer.findOne({ phone: cust.phone.toString().trim() });
+          savedCust = await Customer.findOne({ shopId: req.shopId, phone: cust.phone.toString().trim() });
         }
 
         if (savedCust) {
@@ -152,6 +155,7 @@ router.post('/import-data', async (req, res) => {
         } else {
           // Insert new customer
           savedCust = new Customer({
+            shopId: req.shopId,
             name: cust.name,
             phone: cust.phone ? cust.phone.toString().trim() : undefined,
             email: cust.email || '',
@@ -201,10 +205,11 @@ router.post('/import-data', async (req, res) => {
           };
         });
 
-        // Skip if sale already exists (by invoiceNo)
-        const existingSale = await Sale.findOne({ invoiceNo: sale.invoiceNo });
+        // Skip if sale already exists (by invoiceNo within this shop)
+        const existingSale = await Sale.findOne({ shopId: req.shopId, invoiceNo: sale.invoiceNo });
         if (!existingSale) {
           const newSale = new Sale({
+            shopId: req.shopId,
             invoiceNo: sale.invoiceNo,
             items: mappedItems,
             subtotal: parseFloat(sale.subtotal) || 0,

@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
 
 const productSchema = new mongoose.Schema({
+  shopId:         { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', index: true },
   name:           { type: String, required: true, trim: true },
-  barcode:        { type: String, unique: true, sparse: true, trim: true },
+  // Barcode is unique PER SHOP (compound index below), not globally.
+  barcode:        { type: String, sparse: true, trim: true },
   price:          { type: Number, required: true, min: 0 },
   costPrice:      { type: Number, default: 0, min: 0 },
   stock:          { type: Number, required: true, default: 0 },
@@ -16,6 +18,9 @@ const productSchema = new mongoose.Schema({
   description:    { type: String, default: '', trim: true },
   minOrderQty:    { type: Number, default: 1, min: 1 },           // reorder point
 }, { timestamps: true });
+
+// Barcode unique within a shop only (allows different shops to reuse codes)
+productSchema.index({ shopId: 1, barcode: 1 }, { unique: true, sparse: true });
 
 const Product = mongoose.model('Product', productSchema);
 export default Product;

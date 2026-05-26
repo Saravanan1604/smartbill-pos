@@ -1,8 +1,10 @@
 import mongoose from 'mongoose';
 
 const customerSchema = new mongoose.Schema({
+  shopId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', index: true },
   name:         { type: String, required: true, trim: true },
-  phone:        { type: String, unique: true, sparse: true, trim: true },
+  // Phone is unique PER SHOP (compound index below), not globally.
+  phone:        { type: String, sparse: true, trim: true },
   email:        { type: String, trim: true },
   totalSpent:   { type: Number, default: 0 },
   visitCount:   { type: Number, default: 0 },
@@ -14,6 +16,8 @@ const customerSchema = new mongoose.Schema({
   birthday:      { type: String, default: '' },           // MM-DD format
   tags:          { type: [String], default: [] },         // VIP, Regular, Wholesale…
 }, { timestamps: true });
+
+customerSchema.index({ shopId: 1, phone: 1 }, { unique: true, sparse: true });
 
 const Customer = mongoose.model('Customer', customerSchema);
 export default Customer;

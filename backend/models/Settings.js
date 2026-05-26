@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const settingsSchema = new mongoose.Schema({
+  shopId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', index: true },
   shopName: {
     type: String,
     default: 'SmartBill Store'

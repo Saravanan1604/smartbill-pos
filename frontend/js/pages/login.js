@@ -287,7 +287,7 @@ async function loadRegisterView() {
   const wrap = document.getElementById('register-form-wrap');
   if (!sub || !wrap) return;
 
-  const { ok, setupRequired } = await Auth.checkSetupStatus();
+  const { ok } = await Auth.checkSetupStatus();
 
   if (!ok) {
     sub.textContent = 'Could not connect to server.';
@@ -295,30 +295,24 @@ async function loadRegisterView() {
     return;
   }
 
-  if (setupRequired) {
-    // First-ever user — show full form
-    sub.textContent = 'Set up your admin account to get started';
-    wrap.innerHTML = buildRegisterForm(true);
-    attachRegisterListeners();
-  } else {
-    // Users already exist — only admins can create accounts via the admin panel
-    sub.textContent = '';
-    wrap.innerHTML = `
-      <div class="login-notice login-notice-info">
-        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <div>
-          <strong>Account creation is admin-only.</strong><br>
-          Please ask your administrator to create an account for you from the Settings page.
-        </div>
-      </div>
-    `;
-  }
+  // Every sign-up creates a brand-new shop (this user becomes its admin).
+  // Staff for an existing shop are added by that shop's admin from Settings.
+  sub.textContent = 'Create your shop account to get started';
+  wrap.innerHTML = buildRegisterForm(true);
+  attachRegisterListeners();
 }
 
 function buildRegisterForm(isFirstSetup) {
   const qOpts = SECURITY_QUESTIONS.map(q => `<option value="${q}">${q}</option>`).join('');
   return `
     <form id="register-form" class="login-form" onsubmit="return false;">
+      <div class="form-group">
+        <label class="form-label">Shop Name</label>
+        <div class="input-icon-wrap">
+          <svg class="input-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9l1-5h16l1 5M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9M3 9h18"/></svg>
+          <input id="reg-shop" type="text" class="form-input" placeholder="Your shop / business name">
+        </div>
+      </div>
       <div class="form-group">
         <label class="form-label">Username</label>
         <div class="input-icon-wrap">
@@ -371,6 +365,7 @@ function attachRegisterListeners() {
 
 // ─── Register handler ──────────────────────────────────────────────────────
 async function handleRegister() {
+  const shopName         = document.getElementById('reg-shop')?.value?.trim();
   const username         = document.getElementById('reg-user')?.value?.trim();
   const password         = document.getElementById('reg-pass')?.value;
   const confirm          = document.getElementById('reg-confirm')?.value;
@@ -393,7 +388,7 @@ async function handleRegister() {
   const btn = document.getElementById('reg-btn');
   setLoading(btn, true, 'Creating account…');
 
-  const result = await Auth.register({ username, password, securityQuestion, securityAnswer });
+  const result = await Auth.register({ username, password, securityQuestion, securityAnswer, shopName });
 
   if (result.ok) {
     toast.success('Account created! Signing you in…');

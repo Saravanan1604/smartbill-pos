@@ -16,6 +16,9 @@ import User from './models/User.js';
 import Product from './models/Product.js';
 import Customer from './models/Customer.js';
 import Settings from './models/Settings.js';
+import Sale from './models/Sale.js';
+import Shop from './models/Shop.js';
+import Subscription from './models/Subscription.js';
 
 // Routes
 import authRoutes from './routes/auth.js';
@@ -199,6 +202,54 @@ async function seedDatabase() {
       await settings.save();
       console.log('✅ Settings seeded');
     }
+
+    // ── Stage 2: multi-tenancy migration ──────────────────────────────────
+    // Ensure a Default Shop exists and move all legacy (shopId-less) data into
+    // it, so the existing single-shop install keeps working as one tenant and
+    // nothing is lost.
+    let defaultShop = await Shop.findOne({ name: 'Default Shop' });
+    if (!defaultShop) {
+      defaultShop = await new Shop({ name: 'Default Shop' }).save();
+      console.log('✅ Default Shop created for legacy data');
+    }
+    const dsId = defaultShop._id;
+
+    const userFix = await User.updateMany(
+      { role: { $ne: 'superadmin' }, $or: [{ shopId: null }, { shopId: { $exists: false } }] },
+      { $set: { shopId: dsId } }
+    );
+    if (userFix.modifiedCount) console.log(`✅ ${userFix.modifiedCount} user(s) linked to Default Shop`);
+
+    if (!defaultShop.ownerUserId) {
+      const adminAcc = await User.findOne({ shopId: dsId, role: 'admin' });
+      if (adminAcc) { defaultShop.ownerUserId = adminAcc._id; await defaultShop.save(); }
+    }
+
+    for (const [Model, label] of [[Product, 'products'], [Customer, 'customers'], [Sale, 'sales'], [Settings, 'settings']]) {
+      const r = await Model.updateMany(
+        { $or: [{ shopId: null }, { shopId: { $exists: false } }] },
+        { $set: { shopId: dsId } }
+      );
+      if (r.modifiedCount) console.log(`✅ ${r.modifiedCount} ${label} linked to Default Shop`);
+    }
+
+    const dsSub = await Subscription.findOne({ shopId: dsId });
+    if (!dsSub) {
+      const far = new Date(); far.setFullYear(far.getFullYear() + 5);
+      await new Subscription({ shopId: dsId, plan: 'enterprise', status: 'active', currentPeriodEnd: far, provider: 'manual' }).save();
+      console.log('✅ Default Shop subscription created (enterprise/active)');
+    }
+
+    // Replace legacy GLOBAL unique indexes with the new PER-SHOP compound ones
+    const dropIdx = async (Model, name) => {
+      try { await Model.collection.dropIndex(name); console.log(`✅ Dropped legacy index ${name}`); }
+      catch { /* index didn't exist — fine */ }
+    };
+    await dropIdx(Product, 'barcode_1');
+    await dropIdx(Customer, 'phone_1');
+    await dropIdx(Sale, 'invoiceNo_1');
+    await Promise.all([Product.syncIndexes(), Customer.syncIndexes(), Sale.syncIndexes()])
+      .catch(e => console.warn('Index sync warning:', e.message));
 
     // NOTE: Products and Customers are intentionally NOT seeded.
     // Every new business starts with an empty inventory and customer list

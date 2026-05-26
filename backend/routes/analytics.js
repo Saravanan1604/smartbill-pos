@@ -2,11 +2,12 @@ import express from 'express';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import authMiddleware from '../middleware/auth.js';
+import tenant from '../middleware/tenant.js';
 
 const router = express.Router();
 
-// Apply auth middleware to all analytics routes
-router.use(authMiddleware);
+// Scope all analytics to the logged-in user's shop
+router.use(authMiddleware, tenant);
 
 // Get main dashboard stats
 router.get('/dashboard', async (req, res) => {
@@ -15,23 +16,23 @@ router.get('/dashboard', async (req, res) => {
     const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
     // Today's Sales
-    const todaySales = await Sale.find({ date: todayStr });
+    const todaySales = await Sale.find({ shopId: req.shopId, date: todayStr });
     const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
     const todayTxns = todaySales.length;
 
     // Yesterday's Sales
-    const yesterdaySales = await Sale.find({ date: yesterdayStr });
+    const yesterdaySales = await Sale.find({ shopId: req.shopId, date: yesterdayStr });
     const yesterdayRevenue = yesterdaySales.reduce((sum, sale) => sum + sale.total, 0);
     const yesterdayTxns = yesterdaySales.length;
     const yesterdayProfit = yesterdaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
     // Today's and All-time Profit
     const todayProfit = todaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
-    const allSales = await Sale.find({}, 'profit');
+    const allSales = await Sale.find({ shopId: req.shopId }, 'profit');
     const totalProfit = allSales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
     // Products Stats (Low stock and out of stock)
-    const products = await Product.find();
+    const products = await Product.find({ shopId: req.shopId });
     const lowStock = products.filter(p => p.stock <= (p.alertThreshold || 10) && p.stock > 0);
     const outOfStock = products.filter(p => p.stock === 0);
 
@@ -64,7 +65,7 @@ router.get('/sales-trend', async (req, res) => {
       const dateStr = d.toISOString().split('T')[0];
       const label = d.toLocaleDateString('en-IN', { weekday: 'short' });
       
-      const sales = await Sale.find({ date: dateStr }, 'total');
+      const sales = await Sale.find({ shopId: req.shopId, date: dateStr }, 'total');
       const revenue = sales.reduce((sum, s) => sum + s.total, 0);
       
       days.push({
@@ -87,6 +88,7 @@ router.get('/top-products', async (req, res) => {
 
     // Use MongoDB aggregation to sum quantities of items sold
     const topProducts = await Sale.aggregate([
+      { $match: { shopId: req.shopId } },
       { $unwind: '$items' },
       {
         $group: {

@@ -1,14 +1,15 @@
 import express from 'express';
 import Customer from '../models/Customer.js';
 import authMiddleware from '../middleware/auth.js';
+import tenant from '../middleware/tenant.js';
 
 const router = express.Router();
-router.use(authMiddleware);
+router.use(authMiddleware, tenant);
 
 // ─── Get all customers ────────────────────────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const customers = await Customer.find().sort({ name: 1 });
+    const customers = await Customer.find({ shopId: req.shopId }).sort({ name: 1 });
     res.json(customers);
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
@@ -22,11 +23,12 @@ router.post('/', async (req, res) => {
     if (!name) return res.status(400).json({ error: 'Customer name is required.' });
 
     if (phone) {
-      const exists = await Customer.findOne({ phone: phone.trim() });
+      const exists = await Customer.findOne({ shopId: req.shopId, phone: phone.trim() });
       if (exists) return res.status(400).json({ error: `Phone '${phone}' already exists.` });
     }
 
     const newCustomer = new Customer({
+      shopId: req.shopId,
       name, phone: phone ? phone.trim() : undefined,
       email: email ? email.trim() : undefined,
       notes: notes || '', birthday: birthday || '',
@@ -49,7 +51,7 @@ router.put('/:id', async (req, res) => {
             loyaltyPoints, creditBalance, notes, birthday, tags } = req.body;
 
     if (phone) {
-      const exists = await Customer.findOne({ phone: phone.trim(), _id: { $ne: req.params.id } });
+      const exists = await Customer.findOne({ shopId: req.shopId, phone: phone.trim(), _id: { $ne: req.params.id } });
       if (exists) return res.status(400).json({ error: `Phone '${phone}' already exists.` });
     }
 
@@ -66,7 +68,7 @@ router.put('/:id', async (req, res) => {
     if (birthday      !== undefined) updates.birthday      = birthday;
     if (tags          !== undefined) updates.tags          = Array.isArray(tags) ? tags : [];
 
-    const updated = await Customer.findByIdAndUpdate(req.params.id, { $set: updates }, { new: true });
+    const updated = await Customer.findOneAndUpdate({ _id: req.params.id, shopId: req.shopId }, { $set: updates }, { new: true });
     if (!updated) return res.status(404).json({ error: 'Customer not found' });
     res.json(updated);
   } catch (err) {
@@ -77,7 +79,7 @@ router.put('/:id', async (req, res) => {
 // ─── Delete customer ──────────────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
-    const deleted = await Customer.findByIdAndDelete(req.params.id);
+    const deleted = await Customer.findOneAndDelete({ _id: req.params.id, shopId: req.shopId });
     if (!deleted) return res.status(404).json({ error: 'Customer not found' });
     res.json({ message: 'Customer deleted', id: req.params.id });
   } catch (err) {
