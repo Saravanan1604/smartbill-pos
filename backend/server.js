@@ -49,6 +49,29 @@ app.get('/', (req, res) => {
   res.json({ message: 'SmartBill POS API Server is running smoothly!' });
 });
 
+// Health endpoint — reports which database the server is connected to.
+// Exposes host only (no username/password), so it is safe to call publicly.
+app.get('/api/health', (req, res) => {
+  const conn = mongoose.connection;
+  const host = conn?.host || '';
+  let dbType = 'unknown';
+  if (/mongodb\.net/i.test(host)) dbType = 'atlas (persistent ✅)';
+  else if (host && conn?.client?.s?.options?.srvHost) dbType = 'remote (persistent ✅)';
+  else if (process.env.MONGO_URI && !/127\.0\.0\.1|localhost/.test(process.env.MONGO_URI)) dbType = 'remote (persistent ✅)';
+  else if (host) dbType = 'in-memory / local (NOT persistent ⚠️)';
+
+  res.json({
+    status: 'ok',
+    db: {
+      connected: conn?.readyState === 1,
+      host: host || 'n/a',
+      name: conn?.name || 'n/a',
+      type: dbType,
+      mongoUriConfigured: !!process.env.MONGO_URI,
+    },
+  });
+});
+
 // Database Connection Logic with Persistent MongoMemoryServer Fallback
 async function connectDB() {
   let mongoUri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/smartbill';
