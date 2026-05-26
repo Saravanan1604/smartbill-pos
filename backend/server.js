@@ -155,41 +155,9 @@ async function seedDatabase() {
       console.log('✅ Settings seeded');
     }
 
-    // 4. Seed Products
-    const productCount = await Product.countDocuments();
-    if (productCount === 0) {
-      console.log('🌱 Seeding sample products...');
-      const sampleProducts = [
-        { name: 'Full Cream Milk 1L', barcode: '10001', price: 65, costPrice: 50, stock: 45, category: 'Dairy', tax: 0, alertThreshold: 10 },
-        { name: 'Amul Butter 500g', barcode: '10002', price: 275, costPrice: 220, stock: 20, category: 'Dairy', tax: 5, alertThreshold: 5 },
-        { name: 'Britannia Bread', barcode: '10003', price: 40, costPrice: 30, stock: 18, category: 'Bakery', tax: 0, alertThreshold: 5 },
-        { name: 'Tata Salt 1kg', barcode: '10004', price: 22, costPrice: 15, stock: 60, category: 'Grocery', tax: 0, alertThreshold: 15 },
-        { name: 'Sunflower Oil 1L', barcode: '10005', price: 145, costPrice: 115, stock: 30, category: 'Grocery', tax: 5, alertThreshold: 8 },
-        { name: 'Basmati Rice 5kg', barcode: '10006', price: 380, costPrice: 300, stock: 25, category: 'Grocery', tax: 0, alertThreshold: 5 },
-        { name: 'Lays Chips 26g', barcode: '10007', price: 20, costPrice: 14, stock: 80, category: 'Snacks', tax: 18, alertThreshold: 20 },
-        { name: 'Coca-Cola 500ml', barcode: '10008', price: 45, costPrice: 32, stock: 50, category: 'Beverages', tax: 28, alertThreshold: 15 },
-        { name: 'Dettol Soap 75g', barcode: '10009', price: 38, costPrice: 28, stock: 35, category: 'Personal Care', tax: 18, alertThreshold: 10 },
-        { name: 'Colgate Toothpaste', barcode: '10010', price: 85, costPrice: 65, stock: 28, category: 'Personal Care', tax: 18, alertThreshold: 8 },
-        { name: 'Rin Detergent 1kg', barcode: '10011', price: 110, costPrice: 85, stock: 22, category: 'Household', tax: 18, alertThreshold: 5 },
-        { name: 'Maggi Noodles 70g', barcode: '10012', price: 14, costPrice: 10, stock: 100, category: 'Snacks', tax: 18, alertThreshold: 30 },
-        { name: 'Parle-G Biscuits', barcode: '10013', price: 10, costPrice: 7, stock: 150, category: 'Snacks', tax: 18, alertThreshold: 30 }
-      ];
-      await Product.insertMany(sampleProducts);
-      console.log('✅ Sample products seeded');
-    }
-
-    // 5. Seed Customers
-    const customerCount = await Customer.countDocuments();
-    if (customerCount === 0) {
-      console.log('🌱 Seeding sample customers...');
-      const sampleCustomers = [
-        { name: 'Ramesh Kumar', phone: '9876543210', email: 'ramesh@example.com', totalSpent: 260, visitCount: 2, lastVisit: new Date() },
-        { name: 'Priya Sharma', phone: '9123456789', email: 'priya@example.com', totalSpent: 475, visitCount: 3, lastVisit: new Date() },
-        { name: 'Anbu Selvam', phone: '9994561234', email: 'anbu@example.com', totalSpent: 120, visitCount: 1, lastVisit: new Date() }
-      ];
-      await Customer.insertMany(sampleCustomers);
-      console.log('✅ Sample customers seeded');
-    }
+    // NOTE: Products and Customers are intentionally NOT seeded.
+    // Every new business starts with an empty inventory and customer list
+    // so shop owners add their own real products from day one.
   } catch (err) {
     console.error('❌ Error seeding database: ', err.message);
   }

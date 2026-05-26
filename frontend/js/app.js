@@ -4,6 +4,7 @@ import Auth from './auth.js';
 import toast from './components/toast.js';
 import './utils/i18n.js';
 import { renderSidebar, initSidebarMobile, ROLE_ACCESS } from './components/sidebar.js';
+import { initAssistant, hideAssistant } from './components/assistant.js';
 
 import { renderLogin,    initLogin    } from './pages/login.js';
 import { renderDashboard, initDashboard } from './pages/dashboard.js';
@@ -80,6 +81,7 @@ async function navigate(hash) {
   document.title = `${pageTitle} — SmartBill POS`;
 
   if (route.public) {
+    hideAssistant();            // no helper on the login page
     app.innerHTML = await route.render();
     await route.init?.();
     return;
@@ -152,6 +154,7 @@ async function navigate(hash) {
   `;
 
   initSidebarMobile();
+  initAssistant();   // floating Help Assistant for logged-in users
 
   // Attach Topbar Event Listeners
   const themeToggle = document.getElementById('theme-toggle-btn');
