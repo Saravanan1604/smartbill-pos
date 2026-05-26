@@ -44,6 +44,7 @@ export async function renderBilling() {
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           ${heldBill ? `<button class="btn btn-amber btn-sm" id="resume-btn" title="Resume held bill (${heldBill.cart?.length || 0} items from ${heldBill.savedAt || 'earlier'})">▶ Resume${heldBill.cart?.length ? ` (${heldBill.cart.length})` : ''}</button>` : ''}
+          <button class="btn btn-primary btn-sm" id="quick-item-btn" title="Add a one-off item without a barcode (loose goods, vegetables, etc.)">⚡ ${window.t('quick_item')}</button>
           <button class="btn btn-secondary btn-sm" id="hold-btn" title="Hold current bill (save for later)">${window.t('hold_bill')}</button>
           <button class="btn btn-secondary btn-sm" id="clear-cart-btn">${window.t('clear_cart')}</button>
         </div>
@@ -456,6 +457,55 @@ export async function initBilling() {
     const discInput = document.getElementById('discount-input');
     if (discInput) discInput.value = '';
     await updateTotals();
+  });
+
+  // Quick Item — add a one-off product (no barcode / not in catalogue)
+  document.getElementById('quick-item-btn')?.addEventListener('click', () => {
+    createModal({
+      id: 'quick-item',
+      title: `⚡ ${window.t('quick_item')}`,
+      body: `
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">${window.t('product_name')}</label>
+            <input type="text" class="form-input" id="qi-name" placeholder="e.g. Tomatoes 1kg" autofocus>
+          </div>
+          <div style="display:flex;gap:12px;">
+            <div class="form-group" style="margin:0;flex:1;">
+              <label class="form-label">${window.t('selling_price')}</label>
+              <input type="number" class="form-input" id="qi-price" placeholder="0.00" min="0" step="0.01">
+            </div>
+            <div class="form-group" style="margin:0;width:90px;">
+              <label class="form-label">${window.t('items')}</label>
+              <input type="number" class="form-input" id="qi-qty" value="1" min="1">
+            </div>
+          </div>
+        </div>
+      `,
+      footer: `
+        <button class="btn btn-secondary" onclick="window._closeModal('quick-item')">${window.t('cancel')}</button>
+        <button class="btn btn-primary" id="qi-add-btn">${window.t('add')}</button>
+      `
+    });
+
+    setTimeout(() => {
+      const addQuick = async () => {
+        const name = document.getElementById('qi-name')?.value?.trim();
+        const price = parseFloat(document.getElementById('qi-price')?.value);
+        const qty = Math.max(1, parseInt(document.getElementById('qi-qty')?.value) || 1);
+        if (!name) { toast.warning(window.t('name_required2')); return; }
+        if (!price || price <= 0) { toast.warning(window.t('price_required')); return; }
+        // Quick items aren't catalogue products — give a unique id so they don't
+        // collide with real products and won't affect stock.
+        cart.push({ id: 'quick-' + Date.now(), name, price, qty, tax: 0 });
+        renderCartItems();
+        await updateTotals();
+        closeModal('quick-item');
+        toast.success(`${name} ${window.t('product_added_cart')}`);
+      };
+      document.getElementById('qi-add-btn')?.addEventListener('click', addQuick);
+      document.getElementById('qi-qty')?.addEventListener('keydown', e => { if (e.key === 'Enter') addQuick(); });
+    }, 100);
   });
 
   // Clear Cart

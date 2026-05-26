@@ -23,12 +23,42 @@ const CAT_COLOR = {
   'Other':        { color:'#64748b', bg:'rgba(100,116,139,.12)',icon:'📦' },
 };
 
+// Palette used to give user-created (custom) categories a consistent colour.
+const CUSTOM_PALETTE = [
+  { color:'#10b981', bg:'rgba(16,185,129,.12)' },
+  { color:'#06b6d4', bg:'rgba(6,182,212,.12)' },
+  { color:'#f59e0b', bg:'rgba(245,158,11,.12)' },
+  { color:'#3b82f6', bg:'rgba(59,130,246,.12)' },
+  { color:'#ec4899', bg:'rgba(236,72,153,.12)' },
+  { color:'#8b5cf6', bg:'rgba(139,92,246,.12)' },
+  { color:'#f43f5e', bg:'rgba(244,63,94,.12)' },
+  { color:'#14b8a6', bg:'rgba(20,184,166,.12)' },
+];
+
 function catOf(name) {
-  return CAT_COLOR[name] || { color:'#7c3aed', bg:'rgba(124,58,237,.12)', icon:'📦' };
+  if (CAT_COLOR[name]) return CAT_COLOR[name];
+  // Deterministic colour for any custom category (same name → same colour)
+  let hash = 0;
+  for (let i = 0; i < (name || '').length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  const p = CUSTOM_PALETTE[hash % CUSTOM_PALETTE.length];
+  return { color: p.color, bg: p.bg, icon: '🏷️' };
 }
+
+// Merge the built-in suggestions with whatever categories the shop has actually
+// created on their products, so each shop builds its own category list.
+function allCategories(products = []) {
+  const set = new Set(CATEGORIES);
+  products.forEach(p => { if (p.category) set.add(p.category); });
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
+
+// Latest known categories (built-ins + the shop's own), kept fresh on each load
+// so the Add/Edit form can suggest them.
+let _catCache = CATEGORIES.slice();
 
 export async function renderProducts() {
   const products = await DB.getProducts();
+  _catCache = allCategories(products);
   return `
     <div class="page-container animate-fade">
       <div class="page-header">
@@ -65,7 +95,7 @@ export async function renderProducts() {
         </div>
         <select class="form-select" id="cat-filter" style="width:160px;">
           <option value="">All Categories</option>
-          ${CATEGORIES.map(c => `<option value="${c}">${catOf(c).icon} ${c}</option>`).join('')}
+          ${allCategories(products).map(c => `<option value="${c}">${catOf(c).icon} ${c}</option>`).join('')}
         </select>
         <select class="form-select" id="sort-filter" style="width:160px;">
           <option value="name">Sort: Name</option>
@@ -170,6 +200,7 @@ export function initProducts() {
 
   async function refreshGrid() {
     const products = await DB.getProducts();
+    _catCache = allCategories(products);
     const el = document.getElementById('products-grid');
     if (el) el.innerHTML = renderProductCards(products, query, category, sort);
   }
@@ -245,7 +276,8 @@ export function initProducts() {
 function showProductModal(product, onSave) {
   const isEdit  = !!product;
   const qOpts   = TAX_RATES.map(t => `<option value="${t}" ${isEdit && product.tax===t ? 'selected' : ''}>${t}%</option>`).join('');
-  const catOpts = CATEGORIES.map(c => `<option value="${c}" ${isEdit && product.category===c ? 'selected' : ''}>${catOf(c).icon} ${c}</option>`).join('');
+  const catList = allCategories().concat(_catCache);
+  const catOpts = [...new Set(catList)].sort((a,b)=>a.localeCompare(b)).map(c => `<option value="${escHtml(c)}">${catOf(c).icon} ${c}</option>`).join('');
   const unitOpts= UNITS.map(u => `<option value="${u}" ${isEdit && product.unit===u ? 'selected' : ''}>${u}</option>`).join('');
 
   const expiryVal = isEdit && product.expiryDate
@@ -271,8 +303,10 @@ function showProductModal(product, onSave) {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">Category</label>
-          <select class="form-select" id="pf-category">${catOpts}</select>
+          <label class="form-label">Category <span style="color:var(--text-muted);font-size:.72rem;">(type your own)</span></label>
+          <input type="text" class="form-input" id="pf-category" list="pf-category-list" autocomplete="off"
+            value="${isEdit ? escHtml(product.category || '') : ''}" placeholder="e.g. Vegetables, Medicines, Toys…">
+          <datalist id="pf-category-list">${catOpts}</datalist>
         </div>
         <div class="form-group">
           <label class="form-label">Selling Price (₹) *</label>
@@ -348,7 +382,7 @@ function showProductModal(product, onSave) {
       const data = {
         name,
         barcode:        document.getElementById('pf-barcode')?.value?.trim() || '',
-        category:       document.getElementById('pf-category')?.value,
+        category:       document.getElementById('pf-category')?.value?.trim() || 'Other',
         price,
         costPrice:      parseFloat(document.getElementById('pf-cost')?.value || 0) || 0,
         stock:          parseInt(document.getElementById('pf-stock')?.value || 0),

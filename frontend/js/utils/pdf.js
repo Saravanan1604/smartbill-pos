@@ -2,8 +2,14 @@
 import DB from '../db.js';
 import { formatDate, formatDateTime } from './format.js';
 
+// Settings are loaded globally by the router (window.shopSettings); use that
+// synchronously instead of DB.getSettings() which returns a Promise.
+function getSettings() {
+  return window.shopSettings || { shopName: 'SmartBill Store', currency: '₹', address: '', phone: '', gstin: '' };
+}
+
 export function generateInvoicePDF(sale) {
-  const settings = DB.getSettings();
+  const settings = getSettings();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: [80, 200], orientation: 'portrait' });
 
@@ -102,8 +108,7 @@ export function generateInvoicePDF(sale) {
 }
 
 export function printInvoice(sale) {
-  const settings = DB.getSettings();
-  const win = window.open('', '_blank', 'width=400,height=600');
+  const settings = getSettings();
   const items = sale.items.map(item => `
     <div class="item-row">
       <div class="item-name">${item.name}</div>
@@ -115,13 +120,12 @@ export function printInvoice(sale) {
     </div>
   `).join('');
 
-  win.document.write(`<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html><head><title>Invoice ${sale.invoiceNo}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{font-family:'Courier New',monospace;font-size:12px;padding:16px;background:#fff;color:#000;max-width:300px;margin:0 auto;}
-  .center{text-align:center;}
-  .bold{font-weight:bold;}
   .shop-name{font-size:16px;font-weight:900;letter-spacing:2px;text-align:center;margin-bottom:4px;}
   .shop-info{font-size:10px;text-align:center;color:#555;}
   .divider{border:none;border-top:1px dashed #888;margin:8px 0;}
@@ -134,6 +138,7 @@ export function printInvoice(sale) {
   .summary-row{display:flex;justify-content:space-between;font-size:11px;margin:2px 0;}
   .total-row{display:flex;justify-content:space-between;font-size:14px;font-weight:900;margin:4px 0;}
   .footer{text-align:center;font-size:10px;margin-top:8px;color:#555;}
+  @media print { body { max-width:none; } }
 </style>
 </head><body>
 <div class="shop-name">${settings.shopName}</div>
@@ -155,13 +160,34 @@ ${sale.discount > 0 ? `<div class="summary-row"><span>Discount</span><span>-${se
 <hr class="divider">
 <div class="summary-row"><span>Payment</span><span>${sale.paymentMethod || 'Cash'}</span></div>
 <div class="footer"><p>Thank you for shopping!</p><p>Visit again :)</p><br><p style="font-size:8px;">Powered by SmartBill POS</p></div>
-<script>window.onload=()=>{window.print();window.close();}<\/script>
-</body></html>`);
-  win.document.close();
+</body></html>`;
+
+  // Use a hidden iframe so printing works on mobile (popups are blocked there).
+  const existing = document.getElementById('sb-print-frame');
+  if (existing) existing.remove();
+  const iframe = document.createElement('iframe');
+  iframe.id = 'sb-print-frame';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+  iframe.srcdoc = html;
+  iframe.onload = () => {
+    try {
+      const w = iframe.contentWindow;
+      w.focus();
+      w.print();
+    } catch (e) {
+      console.warn('Print failed, opening in new tab instead', e);
+      const tab = window.open('', '_blank');
+      if (tab) { tab.document.write(html); tab.document.close(); }
+    }
+    // Clean up after the print dialog is handled
+    setTimeout(() => iframe.remove(), 2000);
+  };
+  document.body.appendChild(iframe);
 }
 
 export function shareWhatsApp(sale, phone) {
-  const settings = DB.getSettings();
+  const settings = getSettings();
   const lines = sale.items.map(i => `${i.name} x${i.qty} = ${settings.currency}${(i.price*i.qty).toFixed(2)}`).join('\n');
   const msg = `*${settings.shopName}*\n*Invoice: ${sale.invoiceNo}*\n\n${lines}\n\n*Total: ${settings.currency}${sale.total.toFixed(2)}*\nPayment: ${sale.paymentMethod}\n\n_Thank you for shopping!_`;
   const url = `https://wa.me/${phone ? phone.replace(/\D/g,'') : ''}?text=${encodeURIComponent(msg)}`;
