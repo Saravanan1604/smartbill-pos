@@ -87,14 +87,20 @@ async function navigate(hash) {
 
   const session = Auth.getSession();
 
-  // Load settings and dashboard stats globally so formatters and subviews have synchronous access
-  try {
-    window.shopSettings = await DB.getSettings();
-    window.dashboardStats = await DB.getDashboardStats();
-  } catch (err) {
-    window.shopSettings = window.shopSettings || { shopName: 'SmartBill Store', currency: '₹' };
-    window.dashboardStats = window.dashboardStats || { lowStock: [], outOfStock: [] };
-  }
+  // Load settings and dashboard stats globally so formatters and subviews have
+  // synchronous access. These are independent, so fetch them in parallel and
+  // let each fall back individually if it fails (one slow/failed call no longer
+  // blocks the other).
+  const [settingsRes, statsRes] = await Promise.allSettled([
+    DB.getSettings(),
+    DB.getDashboardStats(),
+  ]);
+  window.shopSettings = settingsRes.status === 'fulfilled'
+    ? settingsRes.value
+    : (window.shopSettings || { shopName: 'SmartBill Store', currency: '₹' });
+  window.dashboardStats = statsRes.status === 'fulfilled'
+    ? statsRes.value
+    : (window.dashboardStats || { lowStock: [], outOfStock: [] });
 
   const currentLang = localStorage.getItem('smartbill_lang') || 'en';
 
