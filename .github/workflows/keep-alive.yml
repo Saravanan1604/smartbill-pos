@@ -1,31 +1,30 @@
 name: Keep Backend Awake
 
-# Pings the Render backend so its free tier never goes to sleep,
-# which removes the 30-60s cold-start delay on the first page load.
+# Pings the Render backend so its free tier doesn't sleep (which causes the
+# 30-60s cold-start delay on the first page load).
+#
+# NOTE: GitHub heavily THROTTLES scheduled workflows on low-activity repos,
+# so a "*/10 * * * *" cron often only fires every few HOURS. To compensate,
+# each run pings in a loop for ~55 minutes. For reliable 24/7 warmth, use an
+# external pinger (cron-job.org / UptimeRobot, every 5 min) — that is the
+# proper free fix.
 on:
   schedule:
-    # Every 10 minutes (Render sleeps after ~15 min idle).
-    # Times are UTC. GitHub may delay scheduled runs by a few minutes
-    # under load, so 10 min gives a safe margin under the 15 min window.
     - cron: "*/10 * * * *"
-  workflow_dispatch: {}   # allows manual "Run workflow" from the Actions tab
+  workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 58
     steps:
-      - name: Ping backend health endpoint
+      - name: Keep backend warm for ~55 minutes
         run: |
-          echo "Pinging backend at $(date -u)"
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 https://smartbill-backend-al6t.onrender.com/ || echo "000")
-            echo "Attempt $i -> HTTP $code"
-            if [ "$code" = "200" ]; then
-              echo "Backend is awake."
-              exit 0
-            fi
-            sleep 15
+          URL="https://smartbill-backend-al6t.onrender.com/api/health"
+          # 12 pings, 5 minutes apart ≈ 55 minutes of warmth per run
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 90 "$URL" || echo "000")
+            echo "$(date -u) ping #$i -> HTTP $code"
+            if [ "$i" -lt 12 ]; then sleep 300; fi
           done
-          echo "Backend did not return 200 after retries (it may still be waking up)."
-          # Do not fail the workflow on a cold start; the ping itself triggers the wake-up.
-          exit 0
+          echo "Done keeping backend warm."
