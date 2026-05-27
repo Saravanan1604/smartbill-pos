@@ -2,6 +2,7 @@ import express from 'express';
 import Product from '../models/Product.js';
 import authMiddleware from '../middleware/auth.js';
 import tenant from '../middleware/tenant.js';
+import { requireActivePlan } from '../middleware/plan.js';
 
 const router = express.Router();
 router.use(authMiddleware, tenant);
@@ -17,7 +18,7 @@ router.get('/', async (req, res) => {
 });
 
 // ─── Add product ─────────────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', requireActivePlan, async (req, res) => {
   try {
     const { name, barcode, price, costPrice, stock, category, tax, alertThreshold,
             unit, expiryDate, supplier, description, minOrderQty } = req.body;
@@ -25,6 +26,19 @@ router.post('/', async (req, res) => {
     if (!name || price === undefined || stock === undefined) {
       return res.status(400).json({ error: 'Name, price, and stock are required.' });
     }
+
+    // Plan limit: max products
+    const maxProducts = req.planLimits?.maxProducts ?? Infinity;
+    if (Number.isFinite(maxProducts)) {
+      const count = await Product.countDocuments({ shopId: req.shopId });
+      if (count >= maxProducts) {
+        return res.status(402).json({
+          error: `Your plan allows up to ${maxProducts} products. Upgrade to add more.`,
+          code: 'LIMIT_PRODUCTS',
+        });
+      }
+    }
+
     if (barcode) {
       const exists = await Product.findOne({ shopId: req.shopId, barcode: barcode.trim() });
       if (exists) return res.status(400).json({ error: `Barcode '${barcode}' already exists.` });

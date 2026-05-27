@@ -5,6 +5,9 @@ import Product from '../models/Product.js';
 import Customer from '../models/Customer.js';
 import authMiddleware from '../middleware/auth.js';
 import tenant from '../middleware/tenant.js';
+import { requireActivePlan } from '../middleware/plan.js';
+import { incrUsage, currentPeriod } from '../utils/usage.js';
+import Usage from '../models/Usage.js';
 
 const router = express.Router();
 router.use(authMiddleware, tenant);
@@ -22,13 +25,25 @@ router.get('/', async (req, res) => {
 });
 
 // ─── Create sale ──────────────────────────────────────────────────────────────
-router.post('/', async (req, res) => {
+router.post('/', requireActivePlan, async (req, res) => {
   try {
     const { items, subtotal, tax, discount, total, paymentMethod, customerId,
             pointsRedeemed = 0 } = req.body;
 
     if (!items?.length || total === undefined || !paymentMethod) {
       return res.status(400).json({ error: 'Items, total, and payment method are required.' });
+    }
+
+    // Plan limit: max bills per month
+    const maxBills = req.planLimits?.maxBillsPerMonth ?? Infinity;
+    if (Number.isFinite(maxBills)) {
+      const used = (await Usage.findOne({ shopId: req.shopId, period: currentPeriod() }))?.billsCreated || 0;
+      if (used >= maxBills) {
+        return res.status(402).json({
+          error: `Your plan allows ${maxBills} bills per month. Upgrade for unlimited billing.`,
+          code: 'LIMIT_BILLS',
+        });
+      }
     }
 
     // 1. Invoice number (sequential, unique PER SHOP)
@@ -81,6 +96,9 @@ router.post('/', async (req, res) => {
         $set: { lastVisit: new Date().toISOString() }
       });
     }
+
+    // 5. Track usage for billing limits + platform monitoring
+    await incrUsage(req.shopId, 'billsCreated', 1);
 
     res.status(201).json(newSale);
   } catch (err) {
