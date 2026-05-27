@@ -74,6 +74,10 @@ app.get('/api/health', (req, res) => {
       type: dbType,
       mongoUriConfigured: !!process.env.MONGO_URI,
     },
+    integrations: {
+      razorpayConfigured: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      superAdminConfigured: !!(process.env.SUPERADMIN_USERNAME && process.env.SUPERADMIN_PASSWORD),
+    },
   });
 });
 
