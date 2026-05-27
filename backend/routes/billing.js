@@ -50,7 +50,8 @@ router.post('/create-order', async (req, res) => {
       headers: { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
       body: JSON.stringify({
         amount, currency: 'INR',
-        receipt: `shop_${req.shopId}_${Date.now()}`,
+        // Razorpay caps receipt at 40 chars — keep it short (full id is in notes)
+        receipt: `rcpt_${String(req.shopId).slice(-8)}_${Date.now()}`,
         notes: { shopId: String(req.shopId), plan, cycle },
       }),
     });
