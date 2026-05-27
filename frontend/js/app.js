@@ -15,6 +15,7 @@ import { renderReports,  initReports  } from './pages/reports.js';
 import { renderCustomers, initCustomers } from './pages/customers.js';
 import { renderSettings, initSettings } from './pages/settings.js';
 import { renderPlatform, initPlatform } from './pages/platform.js';
+import { renderSubscription, initSubscription } from './pages/subscription.js';
 
 // Base API configuration - change this URL to your production Render URL after deploying the backend
 window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -30,6 +31,7 @@ const ROUTES = {
   '#reports':   { render: renderReports,    init: initReports,    title: 'Reports'   },
   '#customers': { render: renderCustomers,  init: initCustomers,  title: 'Customers' },
   '#settings':  { render: renderSettings,   init: initSettings,   title: 'Settings'  },
+  '#subscription': { render: renderSubscription, init: initSubscription, title: 'Billing & Plan' },
 };
 
 const PAGE_ID_MAP = {
@@ -40,6 +42,7 @@ const PAGE_ID_MAP = {
   '#reports':   'reports',
   '#customers': 'customers',
   '#settings':  'settings',
+  '#subscription': 'subscription',
 };
 
 async function navigate(hash) {

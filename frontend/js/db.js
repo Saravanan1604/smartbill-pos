@@ -76,6 +76,11 @@ const DB = {
     return this.request(`/api/platform/shops/${id}/subscription`, { method: 'POST', body: JSON.stringify(body) });
   },
 
+  // ── BILLING / SUBSCRIPTION (shop owner) ────────────────────────────────────
+  getBillingStatus()       { return this.request('/api/billing/status'); },
+  createBillingOrder(body) { return this.request('/api/billing/create-order', { method: 'POST', body: JSON.stringify(body) }); },
+  verifyBillingPayment(body){ return this.request('/api/billing/verify', { method: 'POST', body: JSON.stringify(body) }); },
+
   // ── ANALYTICS ─────────────────────────────────────────────────────────────
   getDashboardStats()      { return this.request('/api/analytics/dashboard'); },
   getLast7DaysSales()      { return this.request('/api/analytics/sales-trend'); },
