@@ -39,7 +39,7 @@ const Auth = {
         token: data.token,
         loginAt: new Date().toISOString()
       };
-      sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+      localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
       return { ok: true, session };
     } catch (err) {
       if (err.message === 'TIMEOUT') {
@@ -127,7 +127,7 @@ const Auth = {
       if (session) {
         session.username = data.user.username;
         session.token = data.token;
-        sessionStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(session));
       }
       return { ok: true, message: data.message };
     } catch {
@@ -136,13 +136,13 @@ const Auth = {
   },
 
   logout() {
-    sessionStorage.removeItem(this.SESSION_KEY);
+    localStorage.removeItem(this.SESSION_KEY);
     window.location.hash = '#login';
     window.location.reload();
   },
 
   getSession() {
-    try { return JSON.parse(sessionStorage.getItem(this.SESSION_KEY)); }
+    try { return JSON.parse(localStorage.getItem(this.SESSION_KEY)); }
     catch { return null; }
   },
 

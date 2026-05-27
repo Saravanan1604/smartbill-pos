@@ -103,8 +103,19 @@ async function navigate(hash) {
 
   if (route.public) {
     hideAssistant();            // no helper on the login page
-    app.innerHTML = await route.render();
-    await route.init?.();
+    try {
+      app.innerHTML = await route.render();
+      await route.init?.();
+    } catch (err) {
+      console.error('Login render failed:', err);
+      app.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px;text-align:center;padding:24px;">
+          <div style="font-size:2.5rem;">⚠️</div>
+          <h3>Couldn't load the page</h3>
+          <p style="color:var(--text-secondary);max-width:320px;">Please check your connection and try again.</p>
+          <button class="btn btn-primary" onclick="window.location.reload()">Reload</button>
+        </div>`;
+    }
     return;
   }
 
@@ -254,6 +265,23 @@ async function init() {
 
   // Hash change listener
   window.addEventListener('hashchange', async () => await navigate(window.location.hash));
+
+  // ── Cross-device auto-sync ────────────────────────────────────────────────
+  // When you switch back to this tab/device, refetch the current page so edits
+  // made on another device show up. Billing is skipped so an in-progress cart
+  // is never wiped, and a short debounce avoids redundant reloads.
+  let _lastSync = 0;
+  const autoSync = () => {
+    if (document.visibilityState && document.visibilityState !== 'visible') return;
+    const h = window.location.hash || '#dashboard';
+    if (h === '#login' || h === '#billing' || !Auth.isLoggedIn()) return;
+    const now = Date.now();
+    if (now - _lastSync < 4000) return;   // debounce rapid focus events
+    _lastSync = now;
+    navigate(h);
+  };
+  document.addEventListener('visibilitychange', autoSync);
+  window.addEventListener('focus', autoSync);
 }
 
 export { init };

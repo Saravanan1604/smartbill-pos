@@ -399,7 +399,7 @@ async function handleRegister() {
       token: result.token,
       loginAt: new Date().toISOString()
     };
-    sessionStorage.setItem(Auth.SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(Auth.SESSION_KEY, JSON.stringify(session));
     setTimeout(() => window.location.hash = '#dashboard', 600);
   } else {
     toast.error(result.error);
