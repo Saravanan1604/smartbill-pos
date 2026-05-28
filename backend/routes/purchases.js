@@ -51,6 +51,27 @@ Use "" for missing text and 0 for missing numbers. Do not invent items. JSON onl
   }
 });
 
+// Suppliers summary — grouped from purchase history
+router.get('/suppliers', async (req, res) => {
+  try {
+    const purchases = await Purchase.find({ shopId: req.shopId }).sort({ createdAt: -1 });
+    const map = {};
+    for (const p of purchases) {
+      const name = (p.supplierName || 'Unknown').trim() || 'Unknown';
+      if (!map[name]) map[name] = { name, phone: '', gstin: '', totalSpent: 0, bills: 0, lastDate: null };
+      const s = map[name];
+      s.totalSpent += p.total || 0;
+      s.bills += 1;
+      if (!s.phone && p.supplierPhone) s.phone = p.supplierPhone;
+      if (!s.gstin && p.supplierGstin) s.gstin = p.supplierGstin;
+      if (!s.lastDate) s.lastDate = p.date || p.createdAt;
+    }
+    res.json(Object.values(map).sort((a, b) => b.totalSpent - a.totalSpent));
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
 // List purchases (newest first)
 router.get('/', async (req, res) => {
   try {
@@ -64,7 +85,7 @@ router.get('/', async (req, res) => {
 // Create a purchase → increase stock, update/create matching products
 router.post('/', async (req, res) => {
   try {
-    const { supplierName = '', invoiceNo = '', date, items } = req.body;
+    const { supplierName = '', supplierPhone = '', supplierGstin = '', invoiceNo = '', date, items } = req.body;
     if (!Array.isArray(items) || !items.length) {
       return res.status(400).json({ error: 'Add at least one item.' });
     }
@@ -113,7 +134,7 @@ router.post('/', async (req, res) => {
     }
 
     const purchase = await new Purchase({
-      shopId: req.shopId, supplierName, invoiceNo,
+      shopId: req.shopId, supplierName, supplierPhone, supplierGstin, invoiceNo,
       date: date || new Date().toISOString().split('T')[0],
       items: savedItems, total: parseFloat(total.toFixed(2)),
     }).save();

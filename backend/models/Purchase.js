@@ -14,7 +14,9 @@ const purchaseItemSchema = new mongoose.Schema({
 
 const purchaseSchema = new mongoose.Schema({
   shopId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Shop', required: true, index: true },
-  supplierName: { type: String, default: '' },
+  supplierName:  { type: String, default: '' },
+  supplierPhone: { type: String, default: '' },
+  supplierGstin: { type: String, default: '' },
   invoiceNo:    { type: String, default: '' },
   date:         { type: String },   // YYYY-MM-DD
   items:        [purchaseItemSchema],

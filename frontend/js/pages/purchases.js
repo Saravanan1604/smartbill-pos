@@ -7,7 +7,10 @@ import { formatCurrency, formatDate } from '../utils/format.js';
 let _rows = 1;
 
 export async function renderPurchases() {
-  const purchases = await DB.getPurchases().catch(() => []);
+  const [purchases, suppliers] = await Promise.all([
+    DB.getPurchases().catch(() => []),
+    DB.getSuppliers().catch(() => []),
+  ]);
   return `
     <div class="page-container animate-fade">
       <div class="page-header">
@@ -17,10 +20,37 @@ export async function renderPurchases() {
         </div>
         <button class="btn btn-primary" id="new-purchase-btn">+ New Purchase</button>
       </div>
+
+      <h3 style="margin:0 0 10px;">🏭 Suppliers</h3>
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:24px;">
+        <div id="supplier-list">${renderSuppliers(suppliers)}</div>
+      </div>
+
+      <h3 style="margin:0 0 10px;">🧾 Purchase History</h3>
       <div class="card" style="padding:0;overflow:hidden;">
         <div id="purchase-list">${renderList(purchases)}</div>
       </div>
     </div>`;
+}
+
+function renderSuppliers(suppliers) {
+  if (!suppliers.length) return `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:.85rem;">No suppliers yet — they appear after you record a purchase.</div>`;
+  return `
+    <table style="width:100%;border-collapse:collapse;font-size:.88rem;">
+      <thead><tr style="text-align:left;color:var(--text-muted);font-size:.72rem;text-transform:uppercase;">
+        <th style="padding:12px 16px;">Supplier</th><th style="padding:12px 16px;">Phone</th><th style="padding:12px 16px;">GSTIN</th>
+        <th style="padding:12px 16px;text-align:right;">Bills</th><th style="padding:12px 16px;text-align:right;">Total Purchased</th>
+      </tr></thead>
+      <tbody>${suppliers.map(s => `
+        <tr style="border-top:1px solid var(--glass-border);">
+          <td style="padding:11px 16px;font-weight:600;">${s.name}</td>
+          <td style="padding:11px 16px;color:var(--text-muted);">${s.phone || '—'}</td>
+          <td style="padding:11px 16px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:.78rem;">${s.gstin || '—'}</td>
+          <td style="padding:11px 16px;text-align:right;">${s.bills}</td>
+          <td style="padding:11px 16px;text-align:right;font-family:'JetBrains Mono',monospace;">${formatCurrency(s.totalSpent)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
 }
 
 function renderList(purchases) {
@@ -121,8 +151,11 @@ export async function initPurchases() {
   const products = await DB.getProducts().catch(() => []);
 
   async function refresh() {
+    const [purchases, suppliers] = await Promise.all([DB.getPurchases().catch(() => []), DB.getSuppliers().catch(() => [])]);
     const list = document.getElementById('purchase-list');
-    if (list) list.innerHTML = renderList(await DB.getPurchases().catch(() => []));
+    if (list) list.innerHTML = renderList(purchases);
+    const sup = document.getElementById('supplier-list');
+    if (sup) sup.innerHTML = renderSuppliers(suppliers);
   }
 
   document.getElementById('new-purchase-btn')?.addEventListener('click', () => {
@@ -134,10 +167,13 @@ export async function initPurchases() {
       body: `
         <datalist id="pi-products">${products.map(p => `<option value="${(p.name||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
         <div class="form-grid">
-          <div class="form-group"><label class="form-label">Supplier Name</label><input class="form-input" id="pu-supplier" placeholder="e.g. Shanmugam Pharma"></div>
+          <div class="form-group"><label class="form-label">Supplier Name</label><input class="form-input" id="pu-supplier" list="pu-supplier-list" placeholder="e.g. Shanmugam Pharma"></div>
+          <div class="form-group"><label class="form-label">Supplier Phone</label><input class="form-input" id="pu-sphone" placeholder="e.g. 80722..."></div>
+          <div class="form-group"><label class="form-label">Supplier GSTIN</label><input class="form-input" id="pu-sgstin" placeholder="e.g. 33XXXX..."></div>
           <div class="form-group"><label class="form-label">Invoice No</label><input class="form-input" id="pu-invoice" placeholder="e.g. 1593"></div>
           <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="pu-date" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
         </div>
+        <datalist id="pu-supplier-list"></datalist>
         <div style="background:var(--bg-elevated);border:1px solid var(--glass-border);border-radius:10px;padding:14px;margin:10px 0;">
           <div style="font-weight:700;font-size:.92rem;margin-bottom:8px;">⚡ Auto-fill from your bill using AI <span style="font-size:.7rem;color:var(--success);font-weight:600;">FREE</span></div>
           <ol style="font-size:.8rem;color:var(--text-secondary);margin:0 0 10px 20px;line-height:1.8;">
@@ -166,7 +202,11 @@ export async function initPurchases() {
                <button class="btn btn-primary" id="pu-save">Save &amp; Add Stock</button>`
     });
 
-    setTimeout(() => {
+    setTimeout(async () => {
+      // populate supplier autocomplete from past suppliers
+      const dl = document.getElementById('pu-supplier-list');
+      if (dl) { const sups = await DB.getSuppliers().catch(() => []); dl.innerHTML = sups.map(s => `<option value="${(s.name||'').replace(/"/g,'&quot;')}">`).join(''); }
+
       const body = document.getElementById('pi-body');
       document.getElementById('pi-add')?.addEventListener('click', () => { body.insertAdjacentHTML('beforeend', itemRow()); });
       body.addEventListener('click', (e) => { if (e.target.classList.contains('pi-del')) { if (body.rows.length > 1) e.target.closest('tr').remove(); } });
@@ -196,6 +236,8 @@ export async function initPurchases() {
         try {
           await DB.addPurchase({
             supplierName: document.getElementById('pu-supplier')?.value || '',
+            supplierPhone: document.getElementById('pu-sphone')?.value || '',
+            supplierGstin: document.getElementById('pu-sgstin')?.value || '',
             invoiceNo: document.getElementById('pu-invoice')?.value || '',
             date: document.getElementById('pu-date')?.value,
             items,
