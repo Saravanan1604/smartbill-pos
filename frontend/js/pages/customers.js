@@ -164,8 +164,10 @@ function renderCustomerCards(customers, allSales, query, sortKey = 'name', tagFi
         ${c.lastVisit ? `<div class="cust-last-visit">Last visit: ${formatDate(c.lastVisit)}</div>` : ''}
 
         <!-- Actions -->
-        <div style="display:flex;gap:6px;margin-top:10px;" onclick="event.stopPropagation()">
-          <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="window.editCustomer('${c.id}')">✏️ Edit</button>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;" onclick="event.stopPropagation()">
+          ${c.creditBalance > 0 ? `<button class="btn btn-success btn-sm" style="flex:1;" onclick="window.receivePayment('${c.id}','${(c.name||'').replace(/'/g,"\\'")}',${c.creditBalance})">💰 Receive</button>` : ''}
+          <button class="btn btn-secondary btn-sm" onclick="window.viewLedger('${c.id}')">📒 Ledger</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.editCustomer('${c.id}')">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="window.deleteCustomer('${c.id}')">🗑</button>
         </div>
       </div>
@@ -194,6 +196,78 @@ export async function initCustomers() {
   document.getElementById('cust-tag-filter')?.addEventListener('change', e => { tagFilter = e.target.value; refresh(); });
 
   document.getElementById('add-customer-btn')?.addEventListener('click', () => showCustomerModal(null, refresh));
+
+  // ── Receive a payment against a customer's credit (udhaar) ──────────────────
+  window.receivePayment = (id, name, due) => {
+    createModal({
+      id: 'receive-payment',
+      title: `💰 Receive Payment — ${name}`,
+      body: `
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="login-notice login-notice-info" style="margin:0;">Outstanding: <b>${formatCurrency(due)}</b></div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Amount Received</label>
+            <input type="number" class="form-input" id="rp-amount" value="${due}" min="0" step="0.01" autofocus>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Method</label>
+            <select class="form-select" id="rp-method"><option>Cash</option><option>UPI</option><option>Card</option></select>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="form-label">Note (optional)</label>
+            <input type="text" class="form-input" id="rp-note" placeholder="e.g. part payment">
+          </div>
+        </div>`,
+      footer: `<button class="btn btn-secondary" onclick="window._closeModal('receive-payment')">Cancel</button>
+               <button class="btn btn-success" id="rp-save">Record Payment</button>`
+    });
+    setTimeout(() => {
+      document.getElementById('rp-save')?.addEventListener('click', async () => {
+        const amount = parseFloat(document.getElementById('rp-amount')?.value);
+        if (!amount || amount <= 0) return toast.warning('Enter a valid amount');
+        try {
+          await DB.addPayment({ customerId: id, amount, method: document.getElementById('rp-method')?.value, note: document.getElementById('rp-note')?.value || '' });
+          toast.success(`Payment of ${formatCurrency(amount)} recorded`);
+          closeModal('receive-payment');
+          refresh();
+        } catch (err) { toast.error(err.message); }
+      });
+    }, 100);
+  };
+
+  // ── Customer ledger (credit sales + payments, running balance) ──────────────
+  window.viewLedger = async (id) => {
+    let data;
+    try { data = await DB.getCustomerLedger(id); }
+    catch (err) { toast.error(err.message); return; }
+    const rows = (data.entries || []).map(e => `
+      <tr style="border-top:1px solid var(--glass-border);">
+        <td style="padding:8px 10px;font-size:.78rem;color:var(--text-muted);">${formatDate(e.date)}</td>
+        <td style="padding:8px 10px;font-size:.82rem;">${e.label}</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--danger);">${e.debit ? formatCurrency(e.debit) : ''}</td>
+        <td style="padding:8px 10px;text-align:right;color:var(--success);">${e.credit ? formatCurrency(e.credit) : ''}</td>
+        <td style="padding:8px 10px;text-align:right;font-family:'JetBrains Mono',monospace;">${formatCurrency(e.balance)}</td>
+      </tr>`).join('');
+    createModal({
+      id: 'cust-ledger',
+      title: `📒 Ledger — ${data.customer?.name || ''}`,
+      size: 'lg',
+      body: `
+        <div class="login-notice ${(data.customer?.creditBalance||0) > 0 ? 'login-notice-error' : 'login-notice-info'}" style="margin-bottom:12px;">
+          Current balance: <b>${formatCurrency(data.customer?.creditBalance || 0)}</b> ${(data.customer?.creditBalance||0) > 0 ? '(owes you)' : '(settled)'}
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+            <thead><tr style="text-align:left;color:var(--text-muted);font-size:.7rem;text-transform:uppercase;">
+              <th style="padding:8px 10px;">Date</th><th style="padding:8px 10px;">Detail</th>
+              <th style="padding:8px 10px;text-align:right;">Debit</th><th style="padding:8px 10px;text-align:right;">Credit</th><th style="padding:8px 10px;text-align:right;">Balance</th>
+            </tr></thead>
+            <tbody>${rows || '<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-muted);">No credit transactions yet.</td></tr>'}</tbody>
+          </table>
+        </div>`,
+      footer: `<button class="btn btn-secondary" onclick="window._closeModal('cust-ledger')">Close</button>`
+    });
+  };
 
   window.viewCustomer = async (id) => {
     const customers = await DB.getCustomers();

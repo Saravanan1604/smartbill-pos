@@ -29,6 +29,7 @@ import settingsRoutes from './routes/settings.js';
 import analyticsRoutes from './routes/analytics.js';
 import platformRoutes from './routes/platform.js';
 import billingRoutes from './routes/billing.js';
+import paymentRoutes from './routes/payments.js';
 
 dotenv.config();
 
@@ -48,6 +49,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/platform', platformRoutes);   // platform owner (super-admin) only
 app.use('/api/billing', billingRoutes);      // shop subscription / Razorpay
+app.use('/api/payments', paymentRoutes);     // customer credit (udhaar) payments
 
 // Base route for status checks
 app.get('/', (req, res) => {

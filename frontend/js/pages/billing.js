@@ -152,6 +152,7 @@ export async function renderBilling() {
                 <button class="payment-method-btn active" data-pay="Cash">💵<span>${window.t('cash')}</span></button>
                 <button class="payment-method-btn" data-pay="UPI">📱<span>${window.t('upi')}</span></button>
                 <button class="payment-method-btn" data-pay="Card">💳<span>${window.t('card')}</span></button>
+                <button class="payment-method-btn" data-pay="Credit">📒<span>Credit</span></button>
               </div>
             </div>
             <!-- Actions -->
@@ -637,6 +638,11 @@ export async function initBilling() {
   // Checkout
   document.getElementById('checkout-btn')?.addEventListener('click', () => {
     if (cart.length === 0) return toast.warning('Cart is empty');
+    if (paymentMethod === 'Credit' && !selectedCustomerId) {
+      toast.warning('Select a customer for a Credit (Udhaar) bill');
+      document.getElementById('add-customer-btn')?.click();
+      return;
+    }
     showCheckoutModal();
   });
 

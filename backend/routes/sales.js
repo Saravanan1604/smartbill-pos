@@ -136,12 +136,15 @@ router.post('/', requireActivePlan, async (req, res) => {
     if (customerId) {
       const pointsEarned = Math.floor(parseFloat(total) * POINTS_PER_RUPEE);
       const redeem = Math.max(0, parseInt(pointsRedeemed) || 0);
+      const inc = {
+        totalSpent:    parseFloat(total),
+        visitCount:    1,
+        loyaltyPoints: pointsEarned - redeem   // earn new, deduct redeemed
+      };
+      // Credit (udhaar) sale → the customer owes this amount
+      if (paymentMethod === 'Credit') inc.creditBalance = parseFloat(total);
       await Customer.findOneAndUpdate({ _id: customerId, shopId: req.shopId }, {
-        $inc: {
-          totalSpent:    parseFloat(total),
-          visitCount:    1,
-          loyaltyPoints: pointsEarned - redeem   // earn new, deduct redeemed
-        },
+        $inc: inc,
         $set: { lastVisit: new Date().toISOString() }
       });
     }

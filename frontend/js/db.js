@@ -58,6 +58,8 @@ const DB = {
 
   // ── CUSTOMERS ─────────────────────────────────────────────────────────────
   getCustomers()           { return this.request('/api/customers'); },
+  addPayment(body)         { return this.request('/api/payments', { method:'POST', body:JSON.stringify(body) }); },
+  getCustomerLedger(id)    { return this.request(`/api/payments/ledger/${id}`); },
   addCustomer(c)           { return this.request('/api/customers', { method:'POST', body:JSON.stringify(c) }); },
   updateCustomer(id, u)    { return this.request(`/api/customers/${id}`, { method:'PUT', body:JSON.stringify(u) }); },
   deleteCustomer(id)       { return this.request(`/api/customers/${id}`, { method:'DELETE' }); },
