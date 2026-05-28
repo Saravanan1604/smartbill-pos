@@ -5,22 +5,56 @@ import { createModal, closeModal, confirmDialog } from '../components/modal.js';
 import toast from '../components/toast.js';
 import { openScanner } from '../components/scanner.js';
 
-const CATEGORIES = ['Grocery','Dairy','Bakery','Beverages','Snacks','Personal Care','Household','Stationery','Electronics','Clothing','Other'];
-const UNITS      = ['pcs','kg','g','L','mL','box','dozen','pack','m','roll'];
+const CATEGORIES = [
+  'Grocery','Rice & Grains','Pulses & Dal','Atta & Flour','Spices & Masala','Oil & Ghee',
+  'Vegetables','Fruits','Dairy','Bakery','Beverages','Cool Drinks','Tea & Coffee',
+  'Snacks','Namkeen','Biscuits','Chocolates','Sweets','Ice Cream','Frozen Foods',
+  'Personal Care','Cosmetics','Baby Care','Health & Medicine','Household','Cleaning Supplies',
+  'Pooja Items','Stationery','Kitchenware','Footwear','Clothing','Toys',
+  'Electronics','Mobile Accessories','Hardware','Pet Care','Tobacco & Pan','Other'
+];
+const UNITS      = ['pcs','kg','g','L','mL','box','dozen','pack','packet','bottle','m','roll','bundle'];
 const TAX_RATES  = [0, 5, 12, 18, 28];
 
 const CAT_COLOR = {
-  'Grocery':      { color:'#10b981', bg:'rgba(16,185,129,.12)', icon:'🌾' },
-  'Dairy':        { color:'#06b6d4', bg:'rgba(6,182,212,.12)',  icon:'🥛' },
-  'Bakery':       { color:'#f59e0b', bg:'rgba(245,158,11,.12)', icon:'🍞' },
-  'Beverages':    { color:'#3b82f6', bg:'rgba(59,130,246,.12)', icon:'🧃' },
-  'Snacks':       { color:'#f97316', bg:'rgba(249,115,22,.12)', icon:'🍿' },
-  'Personal Care':{ color:'#ec4899', bg:'rgba(236,72,153,.12)', icon:'🧴' },
-  'Household':    { color:'#7c3aed', bg:'rgba(124,58,237,.12)', icon:'🏠' },
-  'Stationery':   { color:'#6366f1', bg:'rgba(99,102,241,.12)', icon:'📝' },
-  'Electronics':  { color:'#eab308', bg:'rgba(234,179,8,.12)',  icon:'⚡' },
-  'Clothing':     { color:'#f43f5e', bg:'rgba(244,63,94,.12)',  icon:'👕' },
-  'Other':        { color:'#64748b', bg:'rgba(100,116,139,.12)',icon:'📦' },
+  'Grocery':        { color:'#10b981', bg:'rgba(16,185,129,.12)', icon:'🛒' },
+  'Rice & Grains':  { color:'#d97706', bg:'rgba(217,119,6,.12)',  icon:'🌾' },
+  'Pulses & Dal':   { color:'#ca8a04', bg:'rgba(202,138,4,.12)',  icon:'🫘' },
+  'Atta & Flour':   { color:'#b45309', bg:'rgba(180,83,9,.12)',   icon:'🌾' },
+  'Spices & Masala':{ color:'#dc2626', bg:'rgba(220,38,38,.12)',  icon:'🌶️' },
+  'Oil & Ghee':     { color:'#eab308', bg:'rgba(234,179,8,.12)',  icon:'🫗' },
+  'Vegetables':     { color:'#16a34a', bg:'rgba(22,163,74,.12)',  icon:'🥬' },
+  'Fruits':         { color:'#f97316', bg:'rgba(249,115,22,.12)', icon:'🍎' },
+  'Dairy':          { color:'#06b6d4', bg:'rgba(6,182,212,.12)',  icon:'🥛' },
+  'Bakery':         { color:'#f59e0b', bg:'rgba(245,158,11,.12)', icon:'🍞' },
+  'Beverages':      { color:'#3b82f6', bg:'rgba(59,130,246,.12)', icon:'🧃' },
+  'Cool Drinks':    { color:'#0ea5e9', bg:'rgba(14,165,233,.12)', icon:'🥤' },
+  'Tea & Coffee':   { color:'#92400e', bg:'rgba(146,64,14,.12)',  icon:'☕' },
+  'Snacks':         { color:'#f97316', bg:'rgba(249,115,22,.12)', icon:'🍿' },
+  'Namkeen':        { color:'#ea580c', bg:'rgba(234,88,12,.12)',  icon:'🥨' },
+  'Biscuits':       { color:'#d97706', bg:'rgba(217,119,6,.12)',  icon:'🍪' },
+  'Chocolates':     { color:'#7c2d12', bg:'rgba(124,45,18,.12)',  icon:'🍫' },
+  'Sweets':         { color:'#db2777', bg:'rgba(219,39,119,.12)', icon:'🍬' },
+  'Ice Cream':      { color:'#38bdf8', bg:'rgba(56,189,248,.12)', icon:'🍦' },
+  'Frozen Foods':   { color:'#0891b2', bg:'rgba(8,145,178,.12)',  icon:'🧊' },
+  'Personal Care':  { color:'#ec4899', bg:'rgba(236,72,153,.12)', icon:'🧴' },
+  'Cosmetics':      { color:'#e11d48', bg:'rgba(225,29,72,.12)',  icon:'💄' },
+  'Baby Care':      { color:'#f472b6', bg:'rgba(244,114,182,.12)',icon:'🍼' },
+  'Health & Medicine':{color:'#059669',bg:'rgba(5,150,105,.12)',  icon:'💊' },
+  'Household':      { color:'#7c3aed', bg:'rgba(124,58,237,.12)', icon:'🏠' },
+  'Cleaning Supplies':{color:'#0d9488',bg:'rgba(13,148,136,.12)', icon:'🧽' },
+  'Pooja Items':    { color:'#f59e0b', bg:'rgba(245,158,11,.12)', icon:'🪔' },
+  'Stationery':     { color:'#6366f1', bg:'rgba(99,102,241,.12)', icon:'📝' },
+  'Kitchenware':    { color:'#64748b', bg:'rgba(100,116,139,.12)',icon:'🍳' },
+  'Footwear':       { color:'#78716c', bg:'rgba(120,113,108,.12)',icon:'👟' },
+  'Clothing':       { color:'#f43f5e', bg:'rgba(244,63,94,.12)',  icon:'👕' },
+  'Toys':           { color:'#a855f7', bg:'rgba(168,85,247,.12)', icon:'🧸' },
+  'Electronics':    { color:'#eab308', bg:'rgba(234,179,8,.12)',  icon:'⚡' },
+  'Mobile Accessories':{color:'#2563eb',bg:'rgba(37,99,235,.12)', icon:'📱' },
+  'Hardware':       { color:'#475569', bg:'rgba(71,85,105,.12)',  icon:'🔧' },
+  'Pet Care':       { color:'#ca8a04', bg:'rgba(202,138,4,.12)',  icon:'🐾' },
+  'Tobacco & Pan':  { color:'#9a3412', bg:'rgba(154,52,18,.12)',  icon:'🍃' },
+  'Other':          { color:'#64748b', bg:'rgba(100,116,139,.12)',icon:'📦' },
 };
 
 // Palette used to give user-created (custom) categories a consistent colour.

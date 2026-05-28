@@ -107,59 +107,85 @@ export function generateInvoicePDF(sale) {
   doc.save(`Invoice-${sale.invoiceNo}.pdf`);
 }
 
+// Indian-format amount in words (e.g. "One Thousand Two Hundred Fifty")
+function numberToWordsIN(n) {
+  n = Math.round(n);
+  if (n === 0) return 'Zero';
+  const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+  const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+  const two = (x) => x < 20 ? a[x] : (b[Math.floor(x/10)] + (x%10 ? ' ' + a[x%10] : ''));
+  const three = (x) => { const h = Math.floor(x/100), r = x%100; return (h ? a[h] + ' Hundred' + (r ? ' ' : '') : '') + (r ? two(r) : ''); };
+  let res = '';
+  const crore = Math.floor(n/10000000); n %= 10000000;
+  const lakh = Math.floor(n/100000); n %= 100000;
+  const thousand = Math.floor(n/1000); n %= 1000;
+  if (crore)    res += two(crore) + ' Crore ';
+  if (lakh)     res += two(lakh) + ' Lakh ';
+  if (thousand) res += two(thousand) + ' Thousand ';
+  if (n)        res += three(n);
+  return res.trim();
+}
+
 export function printInvoice(sale) {
   const settings = getSettings();
-  const items = sale.items.map(item => `
-    <div class="item-row">
-      <div class="item-name">${item.name}</div>
-      <div class="item-detail">
-        <span>${item.qty} x ${settings.currency}${item.price}</span>
-        <span>${settings.currency}${(item.price * item.qty).toFixed(2)}</span>
-      </div>
-      ${item.taxAmt > 0 ? `<div class="item-tax">Tax: ${settings.currency}${item.taxAmt.toFixed(2)}</div>` : ''}
-    </div>
-  `).join('');
+  const cur = settings.currency || '₹';
+  const totalQty = sale.items.reduce((s, i) => s + i.qty, 0);
+  const rows = sale.items.map((item, idx) => `
+    <tr>
+      <td class="c">${idx + 1}</td>
+      <td>${item.name}</td>
+      <td class="c">${item.qty}</td>
+      <td class="r">${cur}${Number(item.price).toFixed(2)}</td>
+      <td class="r">${cur}${(item.price * item.qty).toFixed(2)}</td>
+    </tr>`).join('');
 
   const html = `<!DOCTYPE html>
 <html><head><title>Invoice ${sale.invoiceNo}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{font-family:'Courier New',monospace;font-size:12px;padding:16px;background:#fff;color:#000;max-width:300px;margin:0 auto;}
-  .shop-name{font-size:16px;font-weight:900;letter-spacing:2px;text-align:center;margin-bottom:4px;}
-  .shop-info{font-size:10px;text-align:center;color:#555;}
-  .divider{border:none;border-top:1px dashed #888;margin:8px 0;}
-  .section-title{text-align:center;font-weight:bold;font-size:11px;margin:4px 0;}
-  .meta-row{display:flex;justify-content:space-between;font-size:10px;margin:2px 0;}
-  .item-row{margin:4px 0;}
-  .item-name{font-size:11px;font-weight:600;}
-  .item-detail{display:flex;justify-content:space-between;font-size:10px;color:#333;}
-  .item-tax{font-size:9px;color:#777;padding-left:8px;}
-  .summary-row{display:flex;justify-content:space-between;font-size:11px;margin:2px 0;}
-  .total-row{display:flex;justify-content:space-between;font-size:14px;font-weight:900;margin:4px 0;}
-  .footer{text-align:center;font-size:10px;margin-top:8px;color:#555;}
-  @media print { body { max-width:none; } }
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#111;background:#fff;padding:18px;max-width:380px;margin:0 auto;}
+  .head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:8px;}
+  .shop-name{font-size:19px;font-weight:800;letter-spacing:.5px;}
+  .shop-info{font-size:10.5px;color:#555;margin-top:2px;}
+  .title{text-align:center;font-weight:700;font-size:12px;letter-spacing:2px;background:#111;color:#fff;padding:3px;border-radius:3px;margin:8px 0;}
+  .meta{display:flex;justify-content:space-between;font-size:10.5px;color:#333;margin:2px 0;}
+  .meta b{color:#111;}
+  table{width:100%;border-collapse:collapse;margin:8px 0;font-size:11px;}
+  thead th{background:#f0f0f0;border-bottom:1.5px solid #999;padding:5px 4px;text-align:left;font-size:10px;text-transform:uppercase;}
+  td{padding:5px 4px;border-bottom:1px dashed #ccc;}
+  td.c,th.c{text-align:center;} td.r,th.r{text-align:right;}
+  .totals{margin-top:6px;font-size:11.5px;}
+  .totals .row{display:flex;justify-content:space-between;padding:2px 0;}
+  .grand{display:flex;justify-content:space-between;font-size:16px;font-weight:800;border-top:2px solid #111;border-bottom:2px solid #111;padding:6px 0;margin-top:4px;}
+  .words{font-size:10.5px;font-style:italic;color:#444;margin-top:6px;}
+  .pay{font-size:11px;margin-top:8px;}
+  .footer{text-align:center;font-size:10px;color:#666;margin-top:12px;border-top:1px dashed #999;padding-top:8px;}
+  @media print { body { max-width:none; padding:8px; } }
 </style>
 </head><body>
-<div class="shop-name">${settings.shopName}</div>
-<div class="shop-info">${settings.address || ''}</div>
-${settings.phone ? `<div class="shop-info">Tel: ${settings.phone}</div>` : ''}
-${settings.gstin ? `<div class="shop-info">GSTIN: ${settings.gstin}</div>` : ''}
-<hr class="divider">
-<div class="section-title">TAX INVOICE</div>
-<div class="meta-row"><span>${sale.invoiceNo}</span><span>${formatDateTime(sale.createdAt)}</span></div>
-${sale.customerName ? `<div class="meta-row"><span>Customer:</span><span>${sale.customerName}</span></div>` : ''}
-<hr class="divider">
-${items}
-<hr class="divider">
-<div class="summary-row"><span>Subtotal</span><span>${settings.currency}${Number(sale.subtotal).toFixed(2)}</span></div>
-${sale.tax > 0 ? `<div class="summary-row"><span>Tax</span><span>${settings.currency}${Number(sale.tax).toFixed(2)}</span></div>` : ''}
-${sale.discount > 0 ? `<div class="summary-row"><span>Discount</span><span>-${settings.currency}${Number(sale.discount).toFixed(2)}</span></div>` : ''}
-<hr class="divider">
-<div class="total-row"><span>TOTAL</span><span>${settings.currency}${Number(sale.total).toFixed(2)}</span></div>
-<hr class="divider">
-<div class="summary-row"><span>Payment</span><span>${sale.paymentMethod || 'Cash'}</span></div>
-<div class="footer"><p>Thank you for shopping!</p><p>Visit again :)</p><br><p style="font-size:8px;">Powered by SmartBill POS</p></div>
+  <div class="head">
+    <div class="shop-name">${settings.shopName}</div>
+    ${settings.address ? `<div class="shop-info">${settings.address}</div>` : ''}
+    <div class="shop-info">${settings.phone ? 'Ph: ' + settings.phone : ''}${settings.gstin ? ' &nbsp;|&nbsp; GSTIN: ' + settings.gstin : ''}</div>
+  </div>
+  <div class="title">TAX INVOICE</div>
+  <div class="meta"><span>Invoice: <b>${sale.invoiceNo}</b></span><span>${formatDateTime(sale.createdAt)}</span></div>
+  ${sale.customerName ? `<div class="meta"><span>Customer: <b>${sale.customerName}</b></span></div>` : ''}
+  <table>
+    <thead><tr><th class="c">#</th><th>Item</th><th class="c">Qty</th><th class="r">Rate</th><th class="r">Amount</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="totals">
+    <div class="row"><span>Total Items: ${sale.items.length} &nbsp; Qty: ${totalQty}</span><span></span></div>
+    <div class="row"><span>Subtotal</span><span>${cur}${Number(sale.subtotal).toFixed(2)}</span></div>
+    ${sale.discount > 0 ? `<div class="row"><span>Discount</span><span>- ${cur}${Number(sale.discount).toFixed(2)}</span></div>` : ''}
+    ${sale.tax > 0 ? `<div class="row"><span>GST / Tax</span><span>${cur}${Number(sale.tax).toFixed(2)}</span></div>` : ''}
+  </div>
+  <div class="grand"><span>GRAND TOTAL</span><span>${cur}${Number(sale.total).toFixed(2)}</span></div>
+  <div class="words">Amount in words: ${numberToWordsIN(sale.total)} Rupees Only</div>
+  <div class="pay"><b>Payment:</b> ${sale.paymentMethod || 'Cash'}</div>
+  <div class="footer">Thank you for shopping with us! Visit again 🙏<br><span style="font-size:8px;">Powered by SmartBill POS</span></div>
 </body></html>`;
 
   // Use a hidden iframe so printing works on mobile (popups are blocked there).
