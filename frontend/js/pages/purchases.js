@@ -138,23 +138,20 @@ export async function initPurchases() {
           <div class="form-group"><label class="form-label">Invoice No</label><input class="form-input" id="pu-invoice" placeholder="e.g. 1593"></div>
           <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="pu-date" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
         </div>
-        <div style="margin:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <input type="file" id="pu-photo" accept="image/*" capture="environment" style="display:none;">
-          <button class="btn btn-success btn-sm" id="pu-scan">📷 Scan Bill with AI</button>
-          <button class="btn btn-secondary btn-sm" id="pu-paste-toggle">📋 Paste from Gemini (free)</button>
-          <span id="pu-scan-status" style="font-size:.78rem;color:var(--text-muted);"></span>
-        </div>
-        <div id="pu-paste-panel" style="display:none;background:var(--bg-elevated);border:1px solid var(--glass-border);border-radius:10px;padding:12px;margin-bottom:10px;">
-          <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px;">
-            1️⃣ Open <a href="https://gemini.google.com" target="_blank" rel="noopener" style="color:var(--accent-violet-light);">gemini.google.com</a> → upload the bill photo →
-            2️⃣ paste the prompt below → 3️⃣ copy Gemini's answer → 4️⃣ paste it here → <b>Fill Items</b>.
-          </p>
-          <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input class="form-input" id="pu-prompt" readonly value="Read this bill image. Output ONLY CSV, one product per line, columns: name,qty,cost,mrp,gst,batch,expiry. No header, no extra text." style="flex:1;font-size:.75rem;">
-            <button class="btn btn-secondary btn-sm" id="pu-copy-prompt" type="button">Copy</button>
+        <div style="background:var(--bg-elevated);border:1px solid var(--glass-border);border-radius:10px;padding:14px;margin:10px 0;">
+          <div style="font-weight:700;font-size:.92rem;margin-bottom:8px;">⚡ Auto-fill from your bill using AI <span style="font-size:.7rem;color:var(--success);font-weight:600;">FREE</span></div>
+          <ol style="font-size:.8rem;color:var(--text-secondary);margin:0 0 10px 20px;line-height:1.8;">
+            <li>Open <a href="https://gemini.google.com" target="_blank" rel="noopener" style="color:var(--accent-violet-light);">gemini.google.com</a> (sign in with your Google account)</li>
+            <li>Tap the <b>＋ / image</b> icon and upload a clear photo of your purchase bill</li>
+            <li>Copy the prompt below and send it to Gemini:</li>
+          </ol>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <textarea class="form-input" id="pu-prompt" readonly rows="3" style="flex:1;font-size:.74rem;resize:none;">From this purchase bill image, list every product line as CSV — one product per line. Use these columns in this exact order: name,qty,cost,mrp,gst,batch,expiry. "cost" is the purchase rate per unit. Put 0 for any missing number and leave blank for missing text. Output ONLY the CSV lines — no header row, no explanation.</textarea>
+            <button class="btn btn-secondary btn-sm" id="pu-copy-prompt" type="button" style="white-space:nowrap;">📋 Copy</button>
           </div>
-          <textarea class="form-input form-textarea" id="pu-paste" rows="5" placeholder="Paste Gemini's CSV result here…"></textarea>
-          <button class="btn btn-primary btn-sm" id="pu-parse" style="margin-top:8px;">Fill Items from Text</button>
+          <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:6px;">4. Copy Gemini's reply and paste it here:</div>
+          <textarea class="form-input form-textarea" id="pu-paste" rows="5" placeholder="Paste Gemini's CSV result here…&#10;example:&#10;Aristozyme Syrup,10,116.25,151.88,5,ABC123,04/28"></textarea>
+          <button class="btn btn-primary btn-sm" id="pu-parse" style="margin-top:8px;">↓ Fill Items from Text</button>
         </div>
         <div style="overflow-x:auto;margin-top:4px;">
           <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
@@ -175,10 +172,6 @@ export async function initPurchases() {
       body.addEventListener('click', (e) => { if (e.target.classList.contains('pi-del')) { if (body.rows.length > 1) e.target.closest('tr').remove(); } });
 
       // Paste-from-Gemini (no API key): user pastes CSV/JSON → fill rows
-      document.getElementById('pu-paste-toggle')?.addEventListener('click', () => {
-        const p = document.getElementById('pu-paste-panel');
-        p.style.display = p.style.display === 'none' ? 'block' : 'none';
-      });
       document.getElementById('pu-copy-prompt')?.addEventListener('click', () => {
         const inp = document.getElementById('pu-prompt'); inp.select(); navigator.clipboard?.writeText(inp.value); toast.success('Prompt copied');
       });
@@ -186,27 +179,7 @@ export async function initPurchases() {
         const items = parsePastedText(document.getElementById('pu-paste')?.value || '');
         if (!items.length) { toast.warning('Could not read any items from the pasted text'); return; }
         body.innerHTML = items.map(it => itemRow(it)).join('');
-        document.getElementById('pu-paste-panel').style.display = 'none';
         toast.success(`${items.length} item(s) filled — review before saving`);
-      });
-
-      // AI scan: photo → Gemini → fill item rows
-      document.getElementById('pu-scan')?.addEventListener('click', () => document.getElementById('pu-photo').click());
-      document.getElementById('pu-photo')?.addEventListener('change', async (e) => {
-        const file = e.target.files?.[0]; if (!file) return;
-        const status = document.getElementById('pu-scan-status');
-        status.textContent = '⏳ Reading bill… (10–20s)';
-        try {
-          const image = await readImage(file);
-          const { items } = await DB.scanPurchaseBill(image);
-          if (!items || !items.length) { status.textContent = '⚠️ No items detected — enter manually.'; return; }
-          body.innerHTML = items.map(it => itemRow(it)).join('');
-          status.textContent = `✅ ${items.length} item(s) detected — please review before saving.`;
-        } catch (err) {
-          status.textContent = '';
-          toast.error(err.message || 'Scan failed');
-        }
-        e.target.value = '';
       });
 
       document.getElementById('pu-save')?.addEventListener('click', async () => {
