@@ -39,6 +39,10 @@ const DB = {
   deleteProduct(id)     { return this.request(`/api/products/${id}`, { method:'DELETE' }); },
   adjustStock(id, opts) { return this.request(`/api/products/${id}/adjust-stock`, { method:'POST', body:JSON.stringify(opts) }); },
 
+  // ── PURCHASES (stock-in) ────────────────────────────────────────────────────
+  getPurchases()        { return this.request('/api/purchases'); },
+  addPurchase(p)        { return this.request('/api/purchases', { method:'POST', body:JSON.stringify(p) }); },
+
   async getProductByBarcode(barcode) {
     const products = await this.getProducts();
     return products.find(p => p.barcode === barcode.toString());
