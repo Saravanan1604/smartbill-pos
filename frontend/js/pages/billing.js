@@ -65,6 +65,10 @@ export async function renderBilling() {
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6z"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h2v2H5zm12 0h2v2h-2zM5 17h2v2H5z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 15h2v2h-2zm4 0h2v2h-2zm-4 4h2v2h-2zm4 0h2v2h-2zm-2-2h2v2h-2z"/></svg>
               ${window.t('scan_qr')}
             </button>
+            <button class="scanner-trigger" id="voice-btn" title="Voice billing (Pro)" style="flex-shrink:0;">
+              <svg id="voice-icon" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-14 0m7 7v3m0-3a4 4 0 004-4V7a4 4 0 10-8 0v4a4 4 0 004 4z"/></svg>
+              🎤
+            </button>
           </div>
 
           <!-- Category Filter -->
@@ -429,6 +433,9 @@ export async function initBilling() {
     });
   });
 
+  // Voice billing (Pro+)
+  document.getElementById('voice-btn')?.addEventListener('click', () => startVoiceBilling());
+
   // Payment method
   document.querySelectorAll('.payment-method-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -649,6 +656,81 @@ export async function initBilling() {
   window.cartSetQty = cartSetQty;
 }
 
+// ─── Voice billing (Pro+) ────────────────────────────────────────────────────
+// Listens to speech and adds items to the cart. Understands phrases like
+// "2 rice", "add 3 milk", "ஐந்து / 5 soap". Falls back to a clear message if
+// the browser/plan doesn't support it.
+function startVoiceBilling() {
+  if (!window.planFeatures?.voice) {
+    toast.warning('Voice billing is a Pro feature. Upgrade to use it.');
+    setTimeout(() => { window.location.hash = '#subscription'; }, 1200);
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast.error('Voice not supported in this browser. Use Chrome.'); return; }
+
+  const rec = new SR();
+  rec.lang = (localStorage.getItem('smartbill_lang') === 'ta') ? 'ta-IN' : 'en-IN';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  const btn = document.getElementById('voice-btn');
+  btn?.classList.add('listening');
+  toast.info('🎤 Listening… say e.g. "2 rice"', 2500);
+
+  rec.onresult = async (e) => {
+    const text = (e.results[0][0].transcript || '').toLowerCase().trim();
+    await handleVoiceCommand(text);
+  };
+  rec.onerror = () => toast.warning('Didn\'t catch that — try again');
+  rec.onend = () => btn?.classList.remove('listening');
+  try { rec.start(); } catch { /* already running */ }
+}
+
+const _numWords = { one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,
+  ஒன்று:1, இரண்டு:2, மூன்று:3, நான்கு:4, ஐந்து:5, ஆறு:6, ஏழு:7, எட்டு:8, ஒன்பது:9, பத்து:10 };
+
+async function handleVoiceCommand(text) {
+  if (!text) return;
+  // checkout / total commands
+  if (/(checkout|bill|total|முடி|பில்)/.test(text)) {
+    if (cart.length) document.getElementById('checkout-btn')?.click();
+    else toast.warning('Cart is empty');
+    return;
+  }
+  // extract quantity (digit or word), default 1
+  let qty = 1;
+  const numMatch = text.match(/\d+/);
+  if (numMatch) qty = parseInt(numMatch[0]);
+  else { for (const w in _numWords) if (text.includes(w)) { qty = _numWords[w]; break; } }
+
+  // strip qty + filler words to get the product name
+  const cleaned = text.replace(/\d+/g, '')
+    .replace(/\b(add|pannunga|podu|kilo|kg|packet|please|the|a|சேர்|போடு|கிலோ)\b/gi, '')
+    .replace(/[a-z]+:/gi, '').trim();
+
+  const products = await cachedProducts();
+  // best match: name contains the spoken words
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  let match = products.find(p => words.length && words.every(w => p.name.toLowerCase().includes(w)));
+  if (!match) match = products.find(p => cleaned && p.name.toLowerCase().includes(cleaned));
+  if (!match && words[0]) match = products.find(p => p.name.toLowerCase().includes(words[0]));
+
+  if (!match) { toast.warning(`No product matched "${cleaned || text}"`); return; }
+  if (match.stock <= 0) { toast.warning(`${match.name} is out of stock`); return; }
+
+  const existing = cart.find(i => i.id === match.id);
+  const addQty = Math.min(qty, match.stock - (existing?.qty || 0));
+  if (addQty <= 0) { toast.warning(`Only ${match.stock} ${match.name} available`); return; }
+  if (existing) existing.qty += addQty;
+  else cart.push({ id: match.id, name: match.name, price: match.price, qty: addQty, tax: match.tax || 0 });
+
+  renderCartItems();
+  await updateTotals();
+  document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
+  toast.success(`🎤 Added ${addQty} × ${match.name}`);
+}
+
 async function addToCart(productId) {
   const products = await cachedProducts();
   const p = products.find(x => x.id === productId);
@@ -850,6 +932,11 @@ async function showInvoiceOptions(sale) {
     document.getElementById('download-pdf-btn')?.addEventListener('click', () => generateInvoicePDF(sale));
     document.getElementById('print-bill-btn')?.addEventListener('click', () => printInvoice(sale));
     document.getElementById('whatsapp-btn')?.addEventListener('click', async () => {
+      if (!window.planFeatures?.whatsapp) {
+        toast.warning('WhatsApp sharing is a Pro feature. Upgrade to use it.');
+        setTimeout(() => { window.location.hash = '#subscription'; }, 1200);
+        return;
+      }
       const customers = await DB.getCustomers();
       const phone = sale.customerId ? customers.find(c => c.id === sale.customerId)?.phone : '';
       shareWhatsApp(sale, phone);

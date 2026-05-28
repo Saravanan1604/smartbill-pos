@@ -128,9 +128,10 @@ async function navigate(hash) {
   // synchronous access. These are independent, so fetch them in parallel and
   // let each fall back individually if it fails (one slow/failed call no longer
   // blocks the other).
-  const [settingsRes, statsRes] = await Promise.allSettled([
+  const [settingsRes, statsRes, billingRes] = await Promise.allSettled([
     DB.getSettings(),
     DB.getDashboardStats(),
+    DB.getBillingStatus(),
   ]);
   window.shopSettings = settingsRes.status === 'fulfilled'
     ? settingsRes.value
@@ -138,6 +139,16 @@ async function navigate(hash) {
   window.dashboardStats = statsRes.status === 'fulfilled'
     ? statsRes.value
     : (window.dashboardStats || { lowStock: [], outOfStock: [] });
+  // Plan features (whatsapp/voice/aiInsights) used to gate Pro+ features in the UI
+  if (billingRes.status === 'fulfilled') {
+    const b = billingRes.value;
+    const planKey = b.status === 'trial' ? 'pro' : (b.subscription?.plan || 'free');
+    window.planFeatures = b.plans?.[planKey]?.limits || {};
+    window.planInfo = { plan: planKey, status: b.status };
+  } else {
+    window.planFeatures = window.planFeatures || {};
+    window.planInfo = window.planInfo || { plan: 'free', status: 'expired' };
+  }
 
   const currentLang = localStorage.getItem('smartbill_lang') || 'en';
 

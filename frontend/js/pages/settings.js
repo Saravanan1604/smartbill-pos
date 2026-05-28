@@ -5,6 +5,42 @@ import { confirmDialog } from '../components/modal.js';
 import toast from '../components/toast.js';
 import { setLang } from '../utils/i18n.js';
 
+// Platform support contact — change this to your real support WhatsApp number
+// (international format, no +). This is the help line YOU give to shops.
+const SUPPORT_WHATSAPP = '919999999999';
+
+// Per-plan support level shown to the shop owner
+function renderSupportSection() {
+  const plan = window.planInfo?.plan || 'free';
+  const tiers = {
+    free:       { label: 'Standard', sla: 'Email support · within 48 hours', color: 'var(--text-muted)' },
+    pro:        { label: 'Priority',  sla: 'WhatsApp + email · within 12 hours', color: 'var(--accent-cyan-light)' },
+    enterprise: { label: 'Dedicated', sla: 'Priority WhatsApp & phone · within 2 hours', color: 'var(--accent-violet-light)' },
+  };
+  const t = tiers[plan] || tiers.free;
+  const canChat = plan === 'pro' || plan === 'enterprise';
+  const msg = encodeURIComponent(`Hi, I need support with SmartBill (${plan} plan).`);
+  return `
+    <div class="settings-section">
+      <div class="settings-section-header">
+        <div class="settings-section-icon" style="background:var(--success-glow);color:var(--success);">🎧</div>
+        <div>
+          <div class="settings-section-title">Support</div>
+          <div class="settings-section-sub">Your plan: <b style="color:${t.color};text-transform:capitalize;">${plan}</b> · ${t.label} support</div>
+        </div>
+      </div>
+      <div style="padding:4px 2px;">
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:12px;">⏱ ${t.sla}</p>
+        ${canChat
+          ? `<a class="btn btn-success" href="https://wa.me/${SUPPORT_WHATSAPP}?text=${msg}" target="_blank" rel="noopener">💬 Chat with Priority Support</a>`
+          : `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+               <a class="btn btn-secondary" href="mailto:support@smartbill.app?subject=${msg}">✉️ Email Support</a>
+               <button class="btn btn-primary" onclick="window.location.hash='#subscription'">⚡ Upgrade for Priority Support</button>
+             </div>`}
+      </div>
+    </div>`;
+}
+
 export async function renderSettings() {
   const settings = await DB.getSettings();
   const products = await DB.getProducts();
@@ -24,6 +60,9 @@ export async function renderSettings() {
           <p>${window.t('settings_sub')}</p>
         </div>
       </div>
+
+      <!-- Support (plan-based) -->
+      ${renderSupportSection()}
 
       <!-- Shop Details -->
       <div class="settings-section">

@@ -15,10 +15,16 @@ export async function renderReports() {
           <h1>Reports & Analytics</h1>
           <p>Track sales, revenue, and business performance</p>
         </div>
-        <button class="btn btn-secondary" id="export-report-btn">
-          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          Export Report
-        </button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-success" id="whatsapp-report-btn" title="Send today's sales summary on WhatsApp (Pro)">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.86 9.86 0 01-4-.8L3 20l.8-4A7.99 7.99 0 013 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            WhatsApp Report
+          </button>
+          <button class="btn btn-secondary" id="export-report-btn">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Export Report
+          </button>
+        </div>
       </div>
 
       <!-- Period Tabs -->
@@ -196,6 +202,32 @@ export async function initReports() {
     tab.classList.add('active');
     document.getElementById('reports-content').innerHTML = await renderReportContent(activePeriod);
     await initReportCharts();
+  });
+
+  // WhatsApp sales summary (Pro+)
+  document.getElementById('whatsapp-report-btn')?.addEventListener('click', async () => {
+    if (!window.planFeatures?.whatsapp) {
+      toast.warning('WhatsApp reports are a Pro feature. Upgrade to use it.');
+      setTimeout(() => { window.location.hash = '#subscription'; }, 1200);
+      return;
+    }
+    const { start, end } = getDateRange(activePeriod);
+    const allSales = await DB.getSales();
+    const sales = allSales.filter(s => {
+      const sDate = s.date || (s.createdAt ? s.createdAt.split('T')[0] : '');
+      return sDate >= start && sDate <= end;
+    });
+    const s = window.shopSettings || { shopName: 'SmartBill Store', currency: '₹' };
+    const rev = sales.reduce((a, x) => a + x.total, 0);
+    const profit = sales.reduce((a, x) => a + (x.profit || 0), 0);
+    const cur = s.currency || '₹';
+    const periodLabel = { today: 'Today', week: 'This Week', month: 'This Month', year: 'This Year' }[activePeriod] || 'Report';
+    const msg = `*${s.shopName}*\n📊 ${periodLabel} Sales Report\n\n`
+      + `🧾 Bills: ${sales.length}\n`
+      + `💰 Revenue: ${cur}${rev.toFixed(2)}\n`
+      + `📈 Profit: ${cur}${profit.toFixed(2)}\n`
+      + `\n_Sent via SmartBill POS_`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   });
 
   document.getElementById('export-report-btn')?.addEventListener('click', async () => {
