@@ -130,6 +130,8 @@ export function printInvoice(sale) {
   const settings = getSettings();
   const cur = settings.currency || '₹';
   const totalQty = sale.items.reduce((s, i) => s + i.qty, 0);
+  const rawTotal = Number(sale.subtotal || 0) - Number(sale.discount || 0) + Number(sale.tax || 0);
+  const roundOff = Number(sale.total) - rawTotal;
   const rows = sale.items.map((item, idx) => `
     <tr>
       <td class="c">${idx + 1}</td>
@@ -165,6 +167,7 @@ export function printInvoice(sale) {
 </style>
 </head><body>
   <div class="head">
+    ${settings.logoUrl ? `<img src="${settings.logoUrl}" style="max-height:54px;max-width:120px;object-fit:contain;margin-bottom:4px;">` : ''}
     <div class="shop-name">${settings.shopName}</div>
     ${settings.address ? `<div class="shop-info">${settings.address}</div>` : ''}
     <div class="shop-info">${settings.phone ? 'Ph: ' + settings.phone : ''}${settings.gstin ? ' &nbsp;|&nbsp; GSTIN: ' + settings.gstin : ''}</div>
@@ -181,10 +184,14 @@ export function printInvoice(sale) {
     <div class="row"><span>Subtotal</span><span>${cur}${Number(sale.subtotal).toFixed(2)}</span></div>
     ${sale.discount > 0 ? `<div class="row"><span>Discount</span><span>- ${cur}${Number(sale.discount).toFixed(2)}</span></div>` : ''}
     ${sale.tax > 0 ? `<div class="row"><span>GST / Tax</span><span>${cur}${Number(sale.tax).toFixed(2)}</span></div>` : ''}
+    ${Math.abs(roundOff) >= 0.01 ? `<div class="row"><span>Round Off</span><span>${roundOff > 0 ? '+' : '-'} ${cur}${Math.abs(roundOff).toFixed(2)}</span></div>` : ''}
   </div>
   <div class="grand"><span>GRAND TOTAL</span><span>${cur}${Number(sale.total).toFixed(2)}</span></div>
   <div class="words">Amount in words: ${numberToWordsIN(sale.total)} Rupees Only</div>
   <div class="pay"><b>Payment:</b> ${sale.paymentMethod || 'Cash'}</div>
+  ${settings.invoiceNotes ? `<div style="font-size:10px;color:#444;margin-top:8px;"><b>Note:</b> ${settings.invoiceNotes}</div>` : ''}
+  ${settings.invoiceTerms ? `<div style="font-size:9.5px;color:#666;margin-top:6px;"><b>Terms &amp; Conditions:</b> ${settings.invoiceTerms}</div>` : ''}
+  ${settings.signatureUrl ? `<div style="text-align:right;margin-top:14px;"><img src="${settings.signatureUrl}" style="max-height:46px;max-width:160px;object-fit:contain;"><div style="font-size:9px;color:#555;border-top:1px solid #999;display:inline-block;padding-top:2px;">Authorised Signatory</div></div>` : ''}
   <div class="footer">Thank you for shopping with us! Visit again 🙏<br><span style="font-size:8px;">Powered by SmartBill POS</span></div>
 </body></html>`;
 

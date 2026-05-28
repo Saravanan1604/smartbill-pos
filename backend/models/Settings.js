@@ -29,7 +29,13 @@ const settingsSchema = new mongoose.Schema({
   currency: {
     type: String,
     default: '₹'
-  }
+  },
+  // ── Invoice customisation ──────────────────────────────────────────────────
+  logoUrl:      { type: String, default: '' },   // base64 data URL
+  signatureUrl: { type: String, default: '' },   // base64 data URL
+  invoiceTerms: { type: String, default: '' },
+  invoiceNotes: { type: String, default: '' },
+  enableRoundOff:{ type: Boolean, default: false },
 }, { timestamps: true });
 
 const Settings = mongoose.model('Settings', settingsSchema);

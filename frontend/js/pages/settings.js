@@ -145,6 +145,58 @@ export async function renderSettings() {
         </div>
       </div>
 
+      <!-- Invoice Customization -->
+      <div class="settings-section">
+        <div class="settings-section-header">
+          <div class="settings-section-icon" style="background:var(--accent-amber-glow);color:var(--accent-amber);">🧾</div>
+          <div>
+            <div class="settings-section-title">Invoice Customization</div>
+            <div class="settings-section-sub">Logo, signature, terms &amp; round-off shown on your bills</div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label">Shop Logo</label>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <img id="s-logo-preview" src="${settings.logoUrl || ''}" style="width:56px;height:56px;border-radius:8px;object-fit:contain;background:var(--bg-base);border:1px solid var(--glass-border);${settings.logoUrl ? '' : 'display:none;'}">
+                <input type="file" id="s-logo-input" accept="image/*" style="display:none;">
+                <button type="button" class="btn btn-secondary btn-sm" id="s-logo-btn">Upload Logo</button>
+                ${settings.logoUrl ? `<button type="button" class="btn btn-ghost btn-sm" id="s-logo-remove">Remove</button>` : ''}
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Signature</label>
+              <div style="display:flex;align-items:center;gap:12px;">
+                <img id="s-sign-preview" src="${settings.signatureUrl || ''}" style="height:48px;border-radius:6px;object-fit:contain;background:var(--bg-base);border:1px solid var(--glass-border);${settings.signatureUrl ? '' : 'display:none;'}">
+                <input type="file" id="s-sign-input" accept="image/*" style="display:none;">
+                <button type="button" class="btn btn-secondary btn-sm" id="s-sign-btn">Upload Signature</button>
+                ${settings.signatureUrl ? `<button type="button" class="btn btn-ghost btn-sm" id="s-sign-remove">Remove</button>` : ''}
+              </div>
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Terms &amp; Conditions</label>
+              <textarea class="form-input form-textarea" id="s-terms" rows="2" placeholder="e.g. Goods once sold will not be taken back.">${settings.invoiceTerms || ''}</textarea>
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label">Invoice Notes</label>
+              <textarea class="form-input form-textarea" id="s-notes" rows="2" placeholder="e.g. Thank you for your business!">${settings.invoiceNotes || ''}</textarea>
+            </div>
+          </div>
+          <div class="settings-row" style="padding-left:0;padding-right:0;">
+            <div class="settings-row-info">
+              <div class="settings-row-label">Round off total</div>
+              <div class="settings-row-sub">Round the grand total to the nearest rupee</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="s-roundoff" ${settings.enableRoundOff ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <button class="btn btn-primary" id="save-invoice-btn" style="margin-top:8px;">Save Invoice Settings</button>
+        </div>
+      </div>
+
       <!-- Account Settings -->
       <div class="settings-section">
         <div class="settings-section-header">
@@ -386,6 +438,57 @@ export function initSettings() {
       setTimeout(() => window.location.reload(), 500);
     } catch (err) {
       toast.error('Error saving tax settings: ' + err.message);
+    }
+  });
+
+  // ── Invoice customization ──────────────────────────────────────────────────
+  let _logoData = null, _signData = null;   // null = unchanged
+  const readImage = (file, maxW) => new Promise((res) => {
+    const r = new FileReader();
+    r.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        res(c.toDataURL('image/png'));
+      };
+      img.src = e.target.result;
+    };
+    r.readAsDataURL(file);
+  });
+
+  document.getElementById('s-logo-btn')?.addEventListener('click', () => document.getElementById('s-logo-input').click());
+  document.getElementById('s-logo-input')?.addEventListener('change', async (e) => {
+    if (!e.target.files[0]) return;
+    _logoData = await readImage(e.target.files[0], 200);
+    const pv = document.getElementById('s-logo-preview'); pv.src = _logoData; pv.style.display = '';
+  });
+  document.getElementById('s-logo-remove')?.addEventListener('click', () => { _logoData = ''; const pv = document.getElementById('s-logo-preview'); pv.src = ''; pv.style.display = 'none'; });
+
+  document.getElementById('s-sign-btn')?.addEventListener('click', () => document.getElementById('s-sign-input').click());
+  document.getElementById('s-sign-input')?.addEventListener('change', async (e) => {
+    if (!e.target.files[0]) return;
+    _signData = await readImage(e.target.files[0], 400);
+    const pv = document.getElementById('s-sign-preview'); pv.src = _signData; pv.style.display = '';
+  });
+  document.getElementById('s-sign-remove')?.addEventListener('click', () => { _signData = ''; const pv = document.getElementById('s-sign-preview'); pv.src = ''; pv.style.display = 'none'; });
+
+  document.getElementById('save-invoice-btn')?.addEventListener('click', async () => {
+    try {
+      const payload = {
+        invoiceTerms: document.getElementById('s-terms')?.value || '',
+        invoiceNotes: document.getElementById('s-notes')?.value || '',
+        enableRoundOff: document.getElementById('s-roundoff')?.checked || false,
+      };
+      if (_logoData !== null) payload.logoUrl = _logoData;
+      if (_signData !== null) payload.signatureUrl = _signData;
+      await DB.saveSettings(payload);
+      window.shopSettings = await DB.getSettings();
+      toast.success('Invoice settings saved!');
+    } catch (err) {
+      toast.error('Error saving invoice settings: ' + err.message);
     }
   });
 

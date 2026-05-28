@@ -30,7 +30,8 @@ router.get('/', async (req, res) => {
 // Update settings
 router.post('/', async (req, res) => {
   try {
-    const { shopName, address, phone, gstin, gstEnabled, gstRate, currency } = req.body;
+    const { shopName, address, phone, gstin, gstEnabled, gstRate, currency,
+            logoUrl, signatureUrl, invoiceTerms, invoiceNotes, enableRoundOff } = req.body;
 
     let settings = await Settings.findOne({ shopId: req.shopId });
     if (!settings) {
@@ -44,6 +45,11 @@ router.post('/', async (req, res) => {
     if (gstEnabled !== undefined) settings.gstEnabled = gstEnabled;
     if (gstRate !== undefined) settings.gstRate = parseInt(gstRate);
     if (currency !== undefined) settings.currency = currency;
+    if (logoUrl !== undefined) settings.logoUrl = logoUrl;
+    if (signatureUrl !== undefined) settings.signatureUrl = signatureUrl;
+    if (invoiceTerms !== undefined) settings.invoiceTerms = invoiceTerms;
+    if (invoiceNotes !== undefined) settings.invoiceNotes = invoiceNotes;
+    if (enableRoundOff !== undefined) settings.enableRoundOff = enableRoundOff;
 
     await settings.save();
     res.json(settings);

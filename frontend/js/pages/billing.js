@@ -258,7 +258,8 @@ async function updateTotals() {
   const gstEnabled = document.getElementById('gst-toggle')?.checked;
   const tax = computeTax(subtotal, products);
 
-  const total = subtotal - discount + tax;
+  let total = subtotal - discount + tax;
+  if (window.shopSettings?.enableRoundOff) total = Math.round(total);
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('subtotal-val', formatCurrency(subtotal));
@@ -803,7 +804,8 @@ async function getCartTotals() {
   const discVal = parseFloat(document.getElementById('discount-input')?.value || 0) || 0;
   const disc = discType === 'pct' ? subtotal * discVal / 100 : discVal;
   const tax = computeTax(subtotal, products);
-  const total = subtotal - disc + tax;
+  let total = subtotal - disc + tax;
+  if (settings?.enableRoundOff) total = Math.round(total);
   return { subtotal, discount: disc, tax, total: Math.max(0, total), products, settings };
 }
 
