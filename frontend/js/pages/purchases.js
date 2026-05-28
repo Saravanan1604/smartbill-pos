@@ -94,11 +94,15 @@ function itemRow(it = {}) {
     </tr>`;
 }
 
-// Parse text pasted from Gemini — accepts JSON array or CSV lines
-// (name,qty,cost,mrp,gst,batch,expiry)
+// Parse text pasted from Gemini — accepts JSON {supplier, items} or a JSON
+// array, or CSV item lines (name,qty,cost,mrp,gst,batch,expiry).
+// Returns { supplier:{...}, items:[...] }.
 function parsePastedText(text) {
   text = (text || '').trim();
-  if (!text) return [];
+  if (!text) return { supplier: {}, items: [] };
+  // strip ```json fences if present
+  text = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+
   const norm = (o) => ({
     name: (o.name || o.item || o.product || '').toString().trim(),
     qty: parseInt(o.qty ?? o.quantity) || 0,
@@ -108,24 +112,34 @@ function parsePastedText(text) {
     batch: (o.batch || '').toString().trim(),
     expiry: (o.expiry || o.exp || '').toString().trim(),
   });
+  const supplierFrom = (s = {}) => ({
+    name: (s.name || s.supplierName || '').toString().trim(),
+    phone: (s.phone || s.mobile || s.supplierPhone || '').toString().trim(),
+    gstin: (s.gstin || s.gst || s.supplierGstin || '').toString().trim(),
+    invoiceNo: (s.invoiceNo || s.invoice || s.billNo || '').toString().trim(),
+    date: (s.date || s.invoiceDate || '').toString().trim(),
+  });
+
   // Try JSON first
   try {
     const j = JSON.parse(text);
     const arr = Array.isArray(j) ? j : (j.items || []);
-    const out = arr.map(norm).filter(i => i.name);
-    if (out.length) return out;
+    const items = arr.map(norm).filter(i => i.name);
+    const supplier = j.supplier ? supplierFrom(j.supplier) : {};
+    if (items.length) return { supplier, items };
   } catch { /* not JSON */ }
-  // CSV / line-based
+
+  // CSV / line-based items only
   const items = [];
   for (const line of text.split(/\r?\n/)) {
     const t = line.trim();
     if (!t) continue;
     const p = t.split(/\s*[,\t|]\s*/);
-    if (/^name$/i.test(p[0]) || (/name/i.test(p[0]) && /qty|quan/i.test(t))) continue; // header
+    if (/^name$/i.test(p[0]) || (/name/i.test(p[0]) && /qty|quan/i.test(t))) continue;
     if (!p[0]) continue;
     items.push(norm({ name: p[0], qty: p[1], costPrice: p[2], mrp: p[3], gst: p[4], batch: p[5], expiry: p[6] }));
   }
-  return items.filter(i => i.name);
+  return { supplier: {}, items: items.filter(i => i.name) };
 }
 
 // Resize + base64 an image file for upload
@@ -182,7 +196,9 @@ export async function initPurchases() {
             <li>Copy the prompt below and send it to Gemini:</li>
           </ol>
           <div style="display:flex;gap:8px;margin-bottom:10px;">
-            <textarea class="form-input" id="pu-prompt" readonly rows="3" style="flex:1;font-size:.74rem;resize:none;">From this purchase bill image, list every product line as CSV — one product per line. Use these columns in this exact order: name,qty,cost,mrp,gst,batch,expiry. "cost" is the purchase rate per unit. Put 0 for any missing number and leave blank for missing text. Output ONLY the CSV lines — no header row, no explanation.</textarea>
+            <textarea class="form-input" id="pu-prompt" readonly rows="5" style="flex:1;font-size:.72rem;resize:none;">From this purchase/supplier bill image, return ONLY a JSON object (no markdown, no explanation) in exactly this shape:
+{"supplier":{"name":"","phone":"","gstin":"","invoiceNo":"","date":""},"items":[{"name":"","qty":0,"cost":0,"mrp":0,"gst":0,"batch":"","expiry":""}]}
+"cost" = purchase rate per unit. Use "" for missing text and 0 for missing numbers. Read the shop/supplier name, phone, GSTIN, bill no and date from the header.</textarea>
             <button class="btn btn-secondary btn-sm" id="pu-copy-prompt" type="button" style="white-space:nowrap;">📋 Copy</button>
           </div>
           <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:6px;">4. Copy Gemini's reply and paste it here:</div>
@@ -216,10 +232,19 @@ export async function initPurchases() {
         const inp = document.getElementById('pu-prompt'); inp.select(); navigator.clipboard?.writeText(inp.value); toast.success('Prompt copied');
       });
       document.getElementById('pu-parse')?.addEventListener('click', () => {
-        const items = parsePastedText(document.getElementById('pu-paste')?.value || '');
+        const { supplier, items } = parsePastedText(document.getElementById('pu-paste')?.value || '');
         if (!items.length) { toast.warning('Could not read any items from the pasted text'); return; }
+        // Fill supplier header fields if the AI returned them
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+        if (supplier) {
+          setVal('pu-supplier', supplier.name);
+          setVal('pu-sphone', supplier.phone);
+          setVal('pu-sgstin', supplier.gstin);
+          setVal('pu-invoice', supplier.invoiceNo);
+          if (supplier.date && /^\d{4}-\d{2}-\d{2}$/.test(supplier.date)) setVal('pu-date', supplier.date);
+        }
         body.innerHTML = items.map(it => itemRow(it)).join('');
-        toast.success(`${items.length} item(s) filled — review before saving`);
+        toast.success(`${items.length} item(s) + supplier filled — review before saving`);
       });
 
       document.getElementById('pu-save')?.addEventListener('click', async () => {
