@@ -49,18 +49,38 @@ function renderList(purchases) {
     </table>`;
 }
 
-function itemRow(i) {
+const esc = (s) => String(s ?? '').replace(/"/g, '&quot;');
+function itemRow(it = {}) {
   return `
-    <tr data-row="${i}">
-      <td><input class="form-input pi-name" list="pi-products" placeholder="Product name" style="min-width:140px;"></td>
-      <td><input class="form-input pi-qty" type="number" min="0" value="1" style="width:64px;"></td>
-      <td><input class="form-input pi-cost" type="number" min="0" step="0.01" placeholder="Cost" style="width:80px;"></td>
-      <td><input class="form-input pi-mrp" type="number" min="0" step="0.01" placeholder="MRP" style="width:80px;"></td>
-      <td><input class="form-input pi-gst" type="number" min="0" step="0.01" placeholder="GST%" style="width:64px;"></td>
-      <td><input class="form-input pi-batch" placeholder="Batch" style="width:80px;"></td>
-      <td><input class="form-input pi-expiry" type="month" style="width:120px;"></td>
+    <tr>
+      <td><input class="form-input pi-name" list="pi-products" placeholder="Product name" value="${esc(it.name)}" style="min-width:140px;"></td>
+      <td><input class="form-input pi-qty" type="number" min="0" value="${it.qty ?? 1}" style="width:64px;"></td>
+      <td><input class="form-input pi-cost" type="number" min="0" step="0.01" placeholder="Cost" value="${it.costPrice || ''}" style="width:80px;"></td>
+      <td><input class="form-input pi-mrp" type="number" min="0" step="0.01" placeholder="MRP" value="${it.mrp || ''}" style="width:80px;"></td>
+      <td><input class="form-input pi-gst" type="number" min="0" step="0.01" placeholder="GST%" value="${it.gst || ''}" style="width:64px;"></td>
+      <td><input class="form-input pi-batch" placeholder="Batch" value="${esc(it.batch)}" style="width:80px;"></td>
+      <td><input class="form-input pi-expiry" placeholder="MM/YY" value="${esc(it.expiry)}" style="width:80px;"></td>
       <td><button class="btn btn-ghost btn-icon-sm pi-del" title="Remove">✕</button></td>
     </tr>`;
+}
+
+// Resize + base64 an image file for upload
+function readImage(file, maxW = 1600) {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxW / img.width);
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = e.target.result;
+    };
+    r.readAsDataURL(file);
+  });
 }
 
 export async function initPurchases() {
@@ -84,12 +104,17 @@ export async function initPurchases() {
           <div class="form-group"><label class="form-label">Invoice No</label><input class="form-input" id="pu-invoice" placeholder="e.g. 1593"></div>
           <div class="form-group"><label class="form-label">Date</label><input class="form-input" id="pu-date" type="date" value="${new Date().toISOString().split('T')[0]}"></div>
         </div>
-        <div style="overflow-x:auto;margin-top:8px;">
+        <div style="margin:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <input type="file" id="pu-photo" accept="image/*" capture="environment" style="display:none;">
+          <button class="btn btn-success btn-sm" id="pu-scan">📷 Scan Bill with AI</button>
+          <span id="pu-scan-status" style="font-size:.78rem;color:var(--text-muted);"></span>
+        </div>
+        <div style="overflow-x:auto;margin-top:4px;">
           <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
             <thead><tr style="color:var(--text-muted);font-size:.7rem;text-align:left;">
               <th style="padding:4px;">Item</th><th style="padding:4px;">Qty</th><th style="padding:4px;">Cost</th><th style="padding:4px;">MRP</th><th style="padding:4px;">GST%</th><th style="padding:4px;">Batch</th><th style="padding:4px;">Expiry</th><th></th>
             </tr></thead>
-            <tbody id="pi-body">${itemRow(0)}</tbody>
+            <tbody id="pi-body">${itemRow()}</tbody>
           </table>
         </div>
         <button class="btn btn-secondary btn-sm" id="pi-add" style="margin-top:8px;">+ Add Item</button>`,
@@ -99,8 +124,27 @@ export async function initPurchases() {
 
     setTimeout(() => {
       const body = document.getElementById('pi-body');
-      document.getElementById('pi-add')?.addEventListener('click', () => { body.insertAdjacentHTML('beforeend', itemRow(_rows++)); });
+      document.getElementById('pi-add')?.addEventListener('click', () => { body.insertAdjacentHTML('beforeend', itemRow()); });
       body.addEventListener('click', (e) => { if (e.target.classList.contains('pi-del')) { if (body.rows.length > 1) e.target.closest('tr').remove(); } });
+
+      // AI scan: photo → Gemini → fill item rows
+      document.getElementById('pu-scan')?.addEventListener('click', () => document.getElementById('pu-photo').click());
+      document.getElementById('pu-photo')?.addEventListener('change', async (e) => {
+        const file = e.target.files?.[0]; if (!file) return;
+        const status = document.getElementById('pu-scan-status');
+        status.textContent = '⏳ Reading bill… (10–20s)';
+        try {
+          const image = await readImage(file);
+          const { items } = await DB.scanPurchaseBill(image);
+          if (!items || !items.length) { status.textContent = '⚠️ No items detected — enter manually.'; return; }
+          body.innerHTML = items.map(it => itemRow(it)).join('');
+          status.textContent = `✅ ${items.length} item(s) detected — please review before saving.`;
+        } catch (err) {
+          status.textContent = '';
+          toast.error(err.message || 'Scan failed');
+        }
+        e.target.value = '';
+      });
 
       document.getElementById('pu-save')?.addEventListener('click', async () => {
         const items = [...body.querySelectorAll('tr')].map(tr => ({

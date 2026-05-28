@@ -8,6 +8,49 @@ import tenant from '../middleware/tenant.js';
 const router = express.Router();
 router.use(authMiddleware, tenant);
 
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+
+// ─── AI: extract line items from a purchase bill photo (Google Gemini) ──────
+// body: { image: "data:image/jpeg;base64,...." }
+router.post('/scan', async (req, res) => {
+  try {
+    if (!GEMINI_KEY) {
+      return res.status(503).json({ error: 'AI bill scanning is not configured. Add GEMINI_API_KEY on the server.' });
+    }
+    const image = req.body.image || '';
+    const m = image.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!m) return res.status(400).json({ error: 'Send a base64 image data URL.' });
+    const mimeType = m[1], base64 = m[2];
+
+    const prompt = `You are reading a shop's PURCHASE / supplier invoice photo (may be a pharmacy or grocery bill).
+Extract every product line item. Return ONLY a JSON object: {"items":[ ... ]}.
+Each item: {"name": string, "hsn": string, "batch": string, "expiry": string (as printed, e.g. "04/28"), "qty": number, "costPrice": number (purchase rate per unit), "mrp": number, "gst": number (GST percent)}.
+Use "" for missing text and 0 for missing numbers. Do not invent items. JSON only, no markdown.`;
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: base64 } }] }],
+        generationConfig: { temperature: 0, responseMimeType: 'application/json' },
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      return res.status(502).json({ error: data?.error?.message || 'AI request failed' });
+    }
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = { items: [] }; }
+    const items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+    res.json({ items });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
 // List purchases (newest first)
 router.get('/', async (req, res) => {
   try {

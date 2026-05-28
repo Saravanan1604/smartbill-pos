@@ -42,6 +42,7 @@ const DB = {
   // ── PURCHASES (stock-in) ────────────────────────────────────────────────────
   getPurchases()        { return this.request('/api/purchases'); },
   addPurchase(p)        { return this.request('/api/purchases', { method:'POST', body:JSON.stringify(p) }); },
+  scanPurchaseBill(image){ return this.request('/api/purchases/scan', { method:'POST', body:JSON.stringify({ image }) }); },
 
   async getProductByBarcode(barcode) {
     const products = await this.getProducts();
