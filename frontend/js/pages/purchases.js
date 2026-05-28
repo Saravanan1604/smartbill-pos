@@ -64,6 +64,40 @@ function itemRow(it = {}) {
     </tr>`;
 }
 
+// Parse text pasted from Gemini — accepts JSON array or CSV lines
+// (name,qty,cost,mrp,gst,batch,expiry)
+function parsePastedText(text) {
+  text = (text || '').trim();
+  if (!text) return [];
+  const norm = (o) => ({
+    name: (o.name || o.item || o.product || '').toString().trim(),
+    qty: parseInt(o.qty ?? o.quantity) || 0,
+    costPrice: parseFloat(o.costPrice ?? o.cost ?? o.rate) || 0,
+    mrp: parseFloat(o.mrp ?? o.price) || 0,
+    gst: parseFloat(o.gst ?? o.tax) || 0,
+    batch: (o.batch || '').toString().trim(),
+    expiry: (o.expiry || o.exp || '').toString().trim(),
+  });
+  // Try JSON first
+  try {
+    const j = JSON.parse(text);
+    const arr = Array.isArray(j) ? j : (j.items || []);
+    const out = arr.map(norm).filter(i => i.name);
+    if (out.length) return out;
+  } catch { /* not JSON */ }
+  // CSV / line-based
+  const items = [];
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t) continue;
+    const p = t.split(/\s*[,\t|]\s*/);
+    if (/^name$/i.test(p[0]) || (/name/i.test(p[0]) && /qty|quan/i.test(t))) continue; // header
+    if (!p[0]) continue;
+    items.push(norm({ name: p[0], qty: p[1], costPrice: p[2], mrp: p[3], gst: p[4], batch: p[5], expiry: p[6] }));
+  }
+  return items.filter(i => i.name);
+}
+
 // Resize + base64 an image file for upload
 function readImage(file, maxW = 1600) {
   return new Promise((resolve) => {
@@ -107,7 +141,20 @@ export async function initPurchases() {
         <div style="margin:10px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <input type="file" id="pu-photo" accept="image/*" capture="environment" style="display:none;">
           <button class="btn btn-success btn-sm" id="pu-scan">📷 Scan Bill with AI</button>
+          <button class="btn btn-secondary btn-sm" id="pu-paste-toggle">📋 Paste from Gemini (free)</button>
           <span id="pu-scan-status" style="font-size:.78rem;color:var(--text-muted);"></span>
+        </div>
+        <div id="pu-paste-panel" style="display:none;background:var(--bg-elevated);border:1px solid var(--glass-border);border-radius:10px;padding:12px;margin-bottom:10px;">
+          <p style="font-size:.8rem;color:var(--text-secondary);margin-bottom:8px;">
+            1️⃣ Open <a href="https://gemini.google.com" target="_blank" rel="noopener" style="color:var(--accent-violet-light);">gemini.google.com</a> → upload the bill photo →
+            2️⃣ paste the prompt below → 3️⃣ copy Gemini's answer → 4️⃣ paste it here → <b>Fill Items</b>.
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input class="form-input" id="pu-prompt" readonly value="Read this bill image. Output ONLY CSV, one product per line, columns: name,qty,cost,mrp,gst,batch,expiry. No header, no extra text." style="flex:1;font-size:.75rem;">
+            <button class="btn btn-secondary btn-sm" id="pu-copy-prompt" type="button">Copy</button>
+          </div>
+          <textarea class="form-input form-textarea" id="pu-paste" rows="5" placeholder="Paste Gemini's CSV result here…"></textarea>
+          <button class="btn btn-primary btn-sm" id="pu-parse" style="margin-top:8px;">Fill Items from Text</button>
         </div>
         <div style="overflow-x:auto;margin-top:4px;">
           <table style="width:100%;border-collapse:collapse;font-size:.8rem;">
@@ -126,6 +173,22 @@ export async function initPurchases() {
       const body = document.getElementById('pi-body');
       document.getElementById('pi-add')?.addEventListener('click', () => { body.insertAdjacentHTML('beforeend', itemRow()); });
       body.addEventListener('click', (e) => { if (e.target.classList.contains('pi-del')) { if (body.rows.length > 1) e.target.closest('tr').remove(); } });
+
+      // Paste-from-Gemini (no API key): user pastes CSV/JSON → fill rows
+      document.getElementById('pu-paste-toggle')?.addEventListener('click', () => {
+        const p = document.getElementById('pu-paste-panel');
+        p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      });
+      document.getElementById('pu-copy-prompt')?.addEventListener('click', () => {
+        const inp = document.getElementById('pu-prompt'); inp.select(); navigator.clipboard?.writeText(inp.value); toast.success('Prompt copied');
+      });
+      document.getElementById('pu-parse')?.addEventListener('click', () => {
+        const items = parsePastedText(document.getElementById('pu-paste')?.value || '');
+        if (!items.length) { toast.warning('Could not read any items from the pasted text'); return; }
+        body.innerHTML = items.map(it => itemRow(it)).join('');
+        document.getElementById('pu-paste-panel').style.display = 'none';
+        toast.success(`${items.length} item(s) filled — review before saving`);
+      });
 
       // AI scan: photo → Gemini → fill item rows
       document.getElementById('pu-scan')?.addEventListener('click', () => document.getElementById('pu-photo').click());
