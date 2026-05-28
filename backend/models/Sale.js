@@ -74,7 +74,10 @@ const saleSchema = new mongoose.Schema({
   date: {
     type: String,
     required: true // Format YYYY-MM-DD
-  }
+  },
+  // Soft-delete: when set, the invoice is in the "recycle bin" and excluded
+  // from sales/reports until recovered.
+  deletedAt: { type: Date, default: null }
 }, { timestamps: true });
 
 saleSchema.index({ shopId: 1, invoiceNo: 1 }, { unique: true });

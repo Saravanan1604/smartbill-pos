@@ -14,11 +14,60 @@ router.use(authMiddleware, tenant);
 
 const POINTS_PER_RUPEE = 0.1; // 1 point per ₹10 spent
 
-// ─── Get all sales ────────────────────────────────────────────────────────────
+// ─── Get all sales (excludes soft-deleted) ─────────────────────────────────────
 router.get('/', async (req, res) => {
   try {
-    const sales = await Sale.find({ shopId: req.shopId }).sort({ createdAt: -1 });
+    const sales = await Sale.find({ shopId: req.shopId, deletedAt: null }).sort({ createdAt: -1 });
     res.json(sales);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── List deleted invoices (recycle bin) ────────────────────────────────────────
+router.get('/deleted', async (req, res) => {
+  try {
+    const sales = await Sale.find({ shopId: req.shopId, deletedAt: { $ne: null } }).sort({ deletedAt: -1 });
+    res.json(sales);
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Soft-delete an invoice (and add its stock back) ────────────────────────────
+router.delete('/:id', async (req, res) => {
+  try {
+    const sale = await Sale.findOne({ _id: req.params.id, shopId: req.shopId, deletedAt: null });
+    if (!sale) return res.status(404).json({ error: 'Invoice not found' });
+    // return stock for catalogue items
+    for (const item of sale.items) {
+      if (mongoose.Types.ObjectId.isValid(item.id)) {
+        const p = await Product.findOne({ _id: item.id, shopId: req.shopId });
+        if (p) { p.stock = (p.stock || 0) + item.qty; await p.save(); }
+      }
+    }
+    sale.deletedAt = new Date();
+    await sale.save();
+    res.json({ message: 'Invoice moved to recycle bin', id: sale._id });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Recover a deleted invoice (and re-deduct stock) ────────────────────────────
+router.post('/:id/recover', async (req, res) => {
+  try {
+    const sale = await Sale.findOne({ _id: req.params.id, shopId: req.shopId, deletedAt: { $ne: null } });
+    if (!sale) return res.status(404).json({ error: 'Deleted invoice not found' });
+    for (const item of sale.items) {
+      if (mongoose.Types.ObjectId.isValid(item.id)) {
+        const p = await Product.findOne({ _id: item.id, shopId: req.shopId });
+        if (p) { p.stock = Math.max(0, (p.stock || 0) - item.qty); await p.save(); }
+      }
+    }
+    sale.deletedAt = null;
+    await sale.save();
+    res.json({ message: 'Invoice recovered', id: sale._id });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
   }

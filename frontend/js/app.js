@@ -18,6 +18,7 @@ import { renderPlatform, initPlatform } from './pages/platform.js';
 import { renderSubscription, initSubscription } from './pages/subscription.js';
 import { renderInsights, initInsights } from './pages/insights.js';
 import { renderGstFinder, initGstFinder } from './pages/gstfinder.js';
+import { renderRecover, initRecover } from './pages/recover.js';
 
 // Base API configuration - change this URL to your production Render URL after deploying the backend
 window.API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -36,6 +37,7 @@ const ROUTES = {
   '#subscription': { render: renderSubscription, init: initSubscription, title: 'Billing & Plan' },
   '#insights':  { render: renderInsights,   init: initInsights,   title: 'AI Insights' },
   '#gst':       { render: renderGstFinder,  init: initGstFinder,  title: 'GST Rate Finder' },
+  '#recover':   { render: renderRecover,    init: initRecover,    title: 'Recover Invoices' },
 };
 
 const PAGE_ID_MAP = {
@@ -49,6 +51,7 @@ const PAGE_ID_MAP = {
   '#subscription': 'subscription',
   '#insights':  'insights',
   '#gst':       'gst',
+  '#recover':   'recover',
 };
 
 async function navigate(hash) {

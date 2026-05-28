@@ -26,7 +26,7 @@ router.get('/insights', async (req, res) => {
     }
 
     const [sales, products] = await Promise.all([
-      Sale.find({ shopId: req.shopId }),
+      Sale.find({ shopId: req.shopId, deletedAt: null }),
       Product.find({ shopId: req.shopId }),
     ]);
     const pid = (p) => String(p.id || p._id);
@@ -158,7 +158,7 @@ router.get('/upsell', async (req, res) => {
     const planKey = status === 'trial' ? 'pro' : (sub?.plan || 'free');
     if (!(PLANS[planKey] || PLANS.free).limits.aiInsights) return res.json({ enabled: false, map: {} });
 
-    const sales = await Sale.find({ shopId: req.shopId });
+    const sales = await Sale.find({ shopId: req.shopId, deletedAt: null });
     const co = {}; const nameById = {};
     sales.forEach(s => {
       const ids = [...new Set(s.items.map(i => i.id))];
@@ -186,19 +186,19 @@ router.get('/dashboard', async (req, res) => {
     const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
     // Today's Sales
-    const todaySales = await Sale.find({ shopId: req.shopId, date: todayStr });
+    const todaySales = await Sale.find({ shopId: req.shopId, date: todayStr, deletedAt: null });
     const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
     const todayTxns = todaySales.length;
 
     // Yesterday's Sales
-    const yesterdaySales = await Sale.find({ shopId: req.shopId, date: yesterdayStr });
+    const yesterdaySales = await Sale.find({ shopId: req.shopId, date: yesterdayStr, deletedAt: null });
     const yesterdayRevenue = yesterdaySales.reduce((sum, sale) => sum + sale.total, 0);
     const yesterdayTxns = yesterdaySales.length;
     const yesterdayProfit = yesterdaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
     // Today's and All-time Profit
     const todayProfit = todaySales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
-    const allSales = await Sale.find({ shopId: req.shopId }, 'profit');
+    const allSales = await Sale.find({ shopId: req.shopId, deletedAt: null }, 'profit');
     const totalProfit = allSales.reduce((sum, sale) => sum + (sale.profit || 0), 0);
 
     // Products Stats (Low stock and out of stock)
@@ -235,7 +235,7 @@ router.get('/sales-trend', async (req, res) => {
       const dateStr = d.toISOString().split('T')[0];
       const label = d.toLocaleDateString('en-IN', { weekday: 'short' });
       
-      const sales = await Sale.find({ shopId: req.shopId, date: dateStr }, 'total');
+      const sales = await Sale.find({ shopId: req.shopId, date: dateStr, deletedAt: null }, 'total');
       const revenue = sales.reduce((sum, s) => sum + s.total, 0);
       
       days.push({
@@ -258,7 +258,7 @@ router.get('/top-products', async (req, res) => {
 
     // Use MongoDB aggregation to sum quantities of items sold
     const topProducts = await Sale.aggregate([
-      { $match: { shopId: req.shopId } },
+      { $match: { shopId: req.shopId, deletedAt: null } },
       { $unwind: '$items' },
       {
         $group: {

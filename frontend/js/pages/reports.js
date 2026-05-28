@@ -3,6 +3,7 @@ import DB from '../db.js';
 import { formatCurrency, formatDate, formatDateTime, getDateRange } from '../utils/format.js';
 import { createLineChart, createBarChart } from '../utils/charts.js';
 import toast from '../components/toast.js';
+import { confirmDialog } from '../components/modal.js';
 
 let activePeriod = 'today';
 
@@ -162,9 +163,9 @@ async function renderReportContent(period) {
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Invoice</th><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Profit</th></tr></thead>
+          <thead><tr><th>Invoice</th><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Profit</th><th></th></tr></thead>
           <tbody>
-            ${sales.length === 0 ? `<tr><td colspan="6"><div class="empty-state"><p>No transactions in this period</p></div></td></tr>` :
+            ${sales.length === 0 ? `<tr><td colspan="7"><div class="empty-state"><p>No transactions in this period</p></div></td></tr>` :
               [...sales].reverse().slice(0, 50).map(s => `
                 <tr>
                   <td class="td-mono" style="color:var(--accent-violet-light);">${s.invoiceNo}</td>
@@ -173,6 +174,7 @@ async function renderReportContent(period) {
                   <td><span class="badge ${s.paymentMethod==='Cash'?'badge-green':s.paymentMethod==='UPI'?'badge-cyan':'badge-violet'}">${s.paymentMethod}</span></td>
                   <td class="td-mono" style="color:var(--text-primary);font-weight:700;">${formatCurrency(s.total)}</td>
                   <td class="td-mono" style="color:var(--success);">${formatCurrency(s.profit || 0)}</td>
+                  <td><button class="btn btn-ghost btn-icon-sm" title="Delete invoice" onclick="window._deleteSale('${s.id}','${s.invoiceNo}')">🗑</button></td>
                 </tr>
               `).join('')
             }
@@ -229,6 +231,18 @@ export async function initReports() {
       + `\n_Sent via SmartBill POS_`;
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   });
+
+  // Delete an invoice (soft-delete → recoverable from Recover Invoices)
+  window._deleteSale = async (id, invoiceNo) => {
+    const ok = await confirmDialog(`Delete invoice ${invoiceNo}? You can restore it from Recover Invoices. Stock will be added back.`, 'Delete Invoice');
+    if (!ok) return;
+    try {
+      await DB.deleteSale(id);
+      toast.success(`${invoiceNo} deleted (recoverable)`);
+      document.getElementById('reports-content').innerHTML = await renderReportContent(activePeriod);
+      await initReportCharts();
+    } catch (err) { toast.error(err.message); }
+  };
 
   document.getElementById('export-report-btn')?.addEventListener('click', async () => {
     const { start, end } = getDateRange(activePeriod);

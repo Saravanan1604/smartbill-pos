@@ -47,6 +47,9 @@ const DB = {
   // ── SALES ─────────────────────────────────────────────────────────────────
   getSales()            { return this.request('/api/sales'); },
   addSale(sale)         { return this.request('/api/sales', { method:'POST', body:JSON.stringify(sale) }); },
+  getDeletedSales()     { return this.request('/api/sales/deleted'); },
+  deleteSale(id)        { return this.request(`/api/sales/${id}`, { method:'DELETE' }); },
+  recoverSale(id)       { return this.request(`/api/sales/${id}/recover`, { method:'POST' }); },
 
   async getTodaySales() {
     const today = new Date().toISOString().split('T')[0];
