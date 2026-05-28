@@ -84,6 +84,7 @@ const DB = {
   // ── ANALYTICS ─────────────────────────────────────────────────────────────
   getDashboardStats()      { return this.request('/api/analytics/dashboard'); },
   getInsights()            { return this.request('/api/analytics/insights'); },
+  getUpsellMap()           { return this.request('/api/analytics/upsell'); },
   getLast7DaysSales()      { return this.request('/api/analytics/sales-trend'); },
   getTopProducts(n = 5)    { return this.request(`/api/analytics/top-products?limit=${n}`); },
 

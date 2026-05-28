@@ -18,6 +18,7 @@ let selectedCustomerName = null;
 // Invalidated on checkout and on page init.
 let _productsCache = null;
 let _settingsCache = null;
+let _upsellMap = {};   // productId → [co-bought product names] (Pro+ AI upsell)
 
 async function cachedProducts() {
   if (!_productsCache) _productsCache = await DB.getProducts();
@@ -436,6 +437,12 @@ export async function initBilling() {
   // Voice billing (Pro+)
   document.getElementById('voice-btn')?.addEventListener('click', () => startVoiceBilling());
 
+  // Load AI upsell map (frequently bought together) — Pro+ only
+  _upsellMap = {};
+  if (window.planFeatures?.aiInsights) {
+    try { const u = await DB.getUpsellMap(); if (u.enabled) _upsellMap = u.map || {}; } catch { /* ignore */ }
+  }
+
   // Payment method
   document.querySelectorAll('.payment-method-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -747,6 +754,12 @@ async function addToCart(productId) {
   await updateTotals();
   document.getElementById('product-grid').innerHTML = renderProductGrid(products, searchQuery, selectedCategory);
   toast.success(`${p.name} added ✓`, 1500);
+
+  // AI upsell: suggest frequently-bought-together items not already in cart
+  const suggestions = (_upsellMap[productId] || []).filter(name => !cart.some(i => i.name === name));
+  if (suggestions.length) {
+    setTimeout(() => toast.info(`💡 Often bought with ${p.name}: ${suggestions.slice(0, 2).join(', ')}`, 3500), 600);
+  }
 }
 
 async function removeFromCart(idx) {

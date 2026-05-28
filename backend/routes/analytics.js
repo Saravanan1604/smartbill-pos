@@ -1,6 +1,7 @@
 import express from 'express';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
+import Customer from '../models/Customer.js';
 import Subscription from '../models/Subscription.js';
 import { PLANS } from '../config/plans.js';
 import { effectiveStatus } from '../middleware/plan.js';
@@ -88,6 +89,53 @@ router.get('/insights', async (req, res) => {
     score -= Math.round(deadRatio * 20);
     score = Math.max(0, Math.min(100, score));
 
+    // 7) Profit leaders + pricing alerts
+    const prodById = {}; products.forEach(p => { prodById[pid(p)] = p; });
+    const nameById = {};
+    const profitByProd = {};
+    sales.forEach(s => s.items.forEach(it => {
+      nameById[it.id] = it.name;
+      const cost = prodById[it.id]?.costPrice || 0;
+      profitByProd[it.id] = (profitByProd[it.id] || 0) + (it.price - cost) * it.qty;
+    }));
+    const topEarners = Object.entries(profitByProd)
+      .map(([id, pr]) => ({ name: prodById[id]?.name || nameById[id] || '?', profit: Math.round(pr) }))
+      .sort((a, b) => b.profit - a.profit).slice(0, 8);
+    const lowMargin = products
+      .filter(p => p.costPrice > 0 && p.price > 0)
+      .map(p => ({ name: p.name, price: p.price, cost: p.costPrice, margin: Math.round((p.price - p.costPrice) / p.price * 100) }))
+      .filter(x => x.margin < 10)
+      .sort((a, b) => a.margin - b.margin).slice(0, 8);
+    const belowCost = products
+      .filter(p => p.costPrice > 0 && p.price < p.costPrice)
+      .map(p => ({ name: p.name, price: p.price, cost: p.costPrice }));
+
+    // 8) Frequently bought together (market-basket pairs)
+    const pairCount = {};
+    sales.forEach(s => {
+      const ids = [...new Set(s.items.map(i => i.id))];
+      for (let a = 0; a < ids.length; a++) for (let b = a + 1; b < ids.length; b++) {
+        pairCount[[ids[a], ids[b]].sort().join('|')] = (pairCount[[ids[a], ids[b]].sort().join('|')] || 0) + 1;
+      }
+    });
+    const basket = Object.entries(pairCount)
+      .map(([k, c]) => { const [x, y] = k.split('|'); return { a: prodById[x]?.name || nameById[x] || '?', b: prodById[y]?.name || nameById[y] || '?', count: c }; })
+      .filter(p => p.count > 1)
+      .sort((a, b) => b.count - a.count).slice(0, 8);
+
+    // 9) Win-back: customers inactive 30+ days
+    const customers = await Customer.find({ shopId: req.shopId });
+    const winback = customers
+      .filter(c => c.lastVisit && (Date.now() - new Date(c.lastVisit).getTime()) > 30 * 864e5)
+      .map(c => ({ name: c.name, phone: c.phone || '', days: Math.round((Date.now() - new Date(c.lastVisit).getTime()) / 864e5), spent: Math.round(c.totalSpent || 0) }))
+      .sort((a, b) => b.spent - a.spent).slice(0, 15);
+
+    // 10) Anomalies: bills with unusually large discounts
+    const anomalies = sales
+      .filter(s => s.subtotal > 0 && s.discount / s.subtotal > 0.3)
+      .map(s => ({ invoice: s.invoiceNo, date: s.date, detail: `${Math.round(s.discount / s.subtotal * 100)}% discount (₹${Math.round(s.discount)})` }))
+      .slice(0, 10);
+
     res.json({
       locked: false,
       forecast, forecastTotal,
@@ -95,7 +143,37 @@ router.get('/insights', async (req, res) => {
       trend: slope > 1 ? 'up' : slope < -1 ? 'down' : 'flat',
       deadStock, reorder, hours, peakHour,
       healthScore: score, margin: Math.round(margin * 100),
+      topEarners, lowMargin, belowCost, basket, winback, anomalies,
     });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+});
+
+// ─── Upsell map for billing: productId → top co-bought product names ─────────
+router.get('/upsell', async (req, res) => {
+  try {
+    const sub = await Subscription.findOne({ shopId: req.shopId });
+    const status = effectiveStatus(sub);
+    const planKey = status === 'trial' ? 'pro' : (sub?.plan || 'free');
+    if (!(PLANS[planKey] || PLANS.free).limits.aiInsights) return res.json({ enabled: false, map: {} });
+
+    const sales = await Sale.find({ shopId: req.shopId });
+    const co = {}; const nameById = {};
+    sales.forEach(s => {
+      const ids = [...new Set(s.items.map(i => i.id))];
+      s.items.forEach(i => { nameById[i.id] = i.name; });
+      for (const a of ids) for (const b of ids) {
+        if (a === b) continue;
+        (co[a] = co[a] || {})[b] = (co[a][b] || 0) + 1;
+      }
+    });
+    const map = {};
+    for (const id in co) {
+      map[id] = Object.entries(co[id]).sort((x, y) => y[1] - x[1]).slice(0, 3)
+        .map(([bid]) => nameById[bid]).filter(Boolean);
+    }
+    res.json({ enabled: true, map });
   } catch (err) {
     res.status(500).json({ error: 'Server error: ' + err.message });
   }
