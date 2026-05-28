@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import Shop from '../models/Shop.js';
 import Subscription from '../models/Subscription.js';
-import { TRIAL_DAYS } from '../config/plans.js';
+import { TRIAL_DAYS, PLANS } from '../config/plans.js';
+import { effectiveStatus } from '../middleware/plan.js';
 import authMiddleware from '../middleware/auth.js';
 
 const router = express.Router();
@@ -48,6 +49,21 @@ router.post('/register', async (req, res) => {
       // Admin creating a staff/owner account inside their own shop
       finalRole = ['owner', 'employee'].includes(role) ? role : 'employee';
       shopId = decoded.shopId;
+
+      // ── Enforce the plan's user limit (Free 1 / Pro 5 / Enterprise ∞) ──
+      const sub = await Subscription.findOne({ shopId });
+      const status = effectiveStatus(sub);
+      const planKey = status === 'trial' ? 'pro' : (sub?.plan || 'free');
+      const maxUsers = (PLANS[planKey] || PLANS.free).limits.maxUsers;
+      if (Number.isFinite(maxUsers)) {
+        const userCount = await User.countDocuments({ shopId });
+        if (userCount >= maxUsers) {
+          return res.status(402).json({
+            error: `Your plan allows up to ${maxUsers} user${maxUsers > 1 ? 's' : ''}. Upgrade to add more staff.`,
+            code: 'LIMIT_USERS',
+          });
+        }
+      }
     } else {
       // New business signup → create a fresh shop, this user becomes its admin
       finalRole = 'admin';
